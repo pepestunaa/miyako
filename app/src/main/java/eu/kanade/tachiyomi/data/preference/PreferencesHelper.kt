@@ -388,6 +388,8 @@ class PreferencesHelper(val context: Context, val preferenceStore: PreferenceSto
 
     fun themeMangaDetails() = preferenceStore.getBoolean(Keys.themeMangaDetails, true)
 
+    fun chapterGridLayout() = preferenceStore.getBoolean("chapter_grid_layout", false)
+
     fun useLargeToolbar() = preferenceStore.getBoolean("use_large_toolbar", true)
 
     fun showSeriesInShortcuts() = preferenceStore.getBoolean(Keys.showSeriesInShortcuts, true)

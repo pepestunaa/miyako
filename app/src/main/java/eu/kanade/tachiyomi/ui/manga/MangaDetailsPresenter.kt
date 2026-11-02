@@ -11,6 +11,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import com.hippo.unifile.UniFile
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.database.models.Category
 import eu.kanade.tachiyomi.data.database.models.Chapter
@@ -41,6 +42,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.SourceNotFoundException
 import eu.kanade.tachiyomi.source.getExtension
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -79,6 +81,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -87,6 +90,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -130,6 +135,9 @@ class MangaDetailsPresenter(
     private val insertTrack: InsertTrack by injectLazy()
     private val getHistory: GetHistory by injectLazy()
     private val getExcludedScanlators: GetExcludedScanlators by injectLazy()
+
+    private val chapterCache: ChapterCache by injectLazy()
+    private val pageListMutex = Mutex()
 
     private val networkPreferences: NetworkPreferences by injectLazy()
 
@@ -799,6 +807,42 @@ class MangaDetailsPresenter(
             )
             asyncUpdateMangaAndChapters(true)
         }
+    }
+
+    /**
+     * Loads the page list of [chapter] for the chapter pages grid, preferring the reader's
+     * local page list cache. Returns null if the pages couldn't be fetched.
+     */
+    fun getHttpSource(): HttpSource? = sourceManager.get(manga.source) as? HttpSource
+
+    suspend fun loadPageList(chapter: Chapter): List<Page>? {
+        val httpSource = resolveHttpSource() ?: return null
+        return pageListMutex.withLock {
+            try {
+                chapterCache.getPageListFromCache(chapter)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                try {
+                    httpSource.getPageList(chapter)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Logger.e(e)
+                    null
+                }
+            }
+        }
+    }
+
+    private suspend fun resolveHttpSource(): HttpSource? {
+        getHttpSource()?.let { return it }
+        // Source list is populated asynchronously after process start
+        repeat(10) {
+            delay(300)
+            getHttpSource()?.let { return it }
+        }
+        return null
     }
 
     /**

@@ -364,6 +364,11 @@
         <item name="android:checkable">false</item>
     </style>
 
+    <style name="Widget.Tachiyomi.Chip.Filter" parent="Widget.Material3.Chip.Filter">
+        <item name="android:textAppearance">@style/Theme.TextAppearance.Chip</item>
+        <item name="chipMinHeight">32dp</item>
+    </style>
+
     <style name="Widget.Tachiyomi.Chip.Stat" parent="Widget.Material3.Chip.Assist">
         <item name="android:textColor">?attr/colorOnBackground</item>
         <item name="android:checkable">false</item>

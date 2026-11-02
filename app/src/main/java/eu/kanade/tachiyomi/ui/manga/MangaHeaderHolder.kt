@@ -37,11 +37,13 @@ import eu.kanade.tachiyomi.databinding.ChapterHeaderItemBinding
 import eu.kanade.tachiyomi.databinding.MangaHeaderItemBinding
 import eu.kanade.tachiyomi.domain.manga.models.Manga
 import eu.kanade.tachiyomi.source.SourceManager
+import eu.kanade.tachiyomi.source.icon
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.nameBasedOnEnabledLanguages
 import eu.kanade.tachiyomi.ui.base.holder.BaseFlexibleViewHolder
 import eu.kanade.tachiyomi.util.isLocal
 import eu.kanade.tachiyomi.util.lang.toNormalized
+import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.getResourceColor
 import eu.kanade.tachiyomi.util.system.isInNightMode
 import eu.kanade.tachiyomi.util.system.isLTR
@@ -79,6 +81,7 @@ class MangaHeaderHolder(
     private var showMoreButton = true
     var hadSelection = false
     private var canCollapse = true
+    private var updatingScanlatorChips = false
 
     init {
 
@@ -296,6 +299,58 @@ class MangaHeaderHolder(
         }
     }
 
+    private fun setScanlatorChips(binding: MangaHeaderItemBinding) {
+        val presenter = adapter.delegate.mangaPresenter()
+        val chips = binding.scanlatorChips ?: return
+        val scroll = binding.scanlatorScroll ?: return
+        val scanlators = presenter.allChapterScanlators.filter(String::isNotBlank).sorted()
+        val show = scanlators.size > 1 && !presenter.isLockedFromSearch && !adapter.hasFilter()
+
+        updatingScanlatorChips = true
+        chips.removeAllViews()
+        scroll.isVisible = show
+        if (!show) {
+            updatingScanlatorChips = false
+            return
+        }
+
+        val excluded = presenter.excludedScanlators.intersect(scanlators.toSet())
+        val counts = presenter.allChapters
+            .mapNotNull { it.chapter.scanlator?.takeIf(String::isNotBlank) }
+            .groupingBy { it }
+            .eachCount()
+
+        fun addChip(label: String, scanlator: String?) {
+            val chip = LayoutInflater.from(chips.context)
+                .inflate(R.layout.scanlator_chip, chips, false) as Chip
+            chip.id = View.generateViewId()
+            chip.text = label
+            chip.tag = scanlator
+            chip.isChecked = if (scanlator == null) {
+                excluded.isEmpty()
+            } else {
+                excluded == scanlators.toSet() - scanlator
+            }
+            chips.addView(chip)
+        }
+
+        addChip("${chips.context.getString(MR.strings.all)} (${presenter.allChapters.size})", null)
+        scanlators.forEach { scanlator ->
+            addChip("$scanlator (${counts[scanlator] ?: 0})", scanlator)
+        }
+        updatingScanlatorChips = false
+
+        chips.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (updatingScanlatorChips || checkedIds.size != 1) return@setOnCheckedStateChangeListener
+            val chip = group.findViewById<Chip>(checkedIds.first())
+            val scanlator = chip?.tag as? String
+            val newExcluded = if (scanlator == null) emptySet() else scanlators.toSet() - scanlator
+            if (newExcluded != presenter.excludedScanlators) {
+                presenter.setScanlatorFilter(newExcluded)
+            }
+        }
+    }
+
     @SuppressLint("SetTextI18n", "StringFormatInvalid")
     fun bind(item: MangaHeaderItem) {
         val presenter = adapter.delegate.mangaPresenter()
@@ -454,8 +509,35 @@ class MangaHeaderHolder(
                 }
             }
         }
+        binding.mangaSourceIcon?.apply {
+            setImageDrawable(presenter.source.icon())
+            isVisible = drawable != null
+        }
+
+        binding.mangaLanguage?.apply {
+            val lang = presenter.source.lang
+                ?.takeIf { !manga.isLocal() && it.isNotBlank() && it != "other" }
+            isVisible = lang != null
+            text = lang?.let {
+                itemView.context.getString(
+                    MR.strings.language_,
+                    LocaleHelper.getLocalizedDisplayName(it),
+                )
+            }
+        }
 
         binding.filtersText.text = presenter.currentFilters()
+        binding.chapterLayoutToggle?.apply {
+            val isGrid = adapter.preferences.chapterGridLayout().get()
+            setImageResource(
+                if (isGrid) R.drawable.ic_view_list_24dp else R.drawable.ic_view_module_24dp,
+            )
+            contentDescription = itemView.context.getString(
+                if (isGrid) MR.strings.list_view else MR.strings.grid_view,
+            )
+            setOnClickListener { adapter.delegate.toggleChapterLayout() }
+        }
+        setScanlatorChips(binding)
 
         if (manga.isLocal()) {
             binding.webviewButton.isVisible = false
@@ -600,6 +682,7 @@ class MangaHeaderHolder(
             shareButton.imageTintList = ColorStateList.valueOf(accentColor)
             webviewButton.imageTintList = ColorStateList.valueOf(accentColor)
             filterButton.imageTintList = ColorStateList.valueOf(accentColor)
+            chapterLayoutToggle?.imageTintList = ColorStateList.valueOf(accentColor)
 
             val states = arrayOf(
                 intArrayOf(-AR.attr.state_enabled),
@@ -658,6 +741,7 @@ class MangaHeaderHolder(
         binding ?: return
         if (!canCollapse) return
         binding.subItemGroup.isVisible = false
+        binding.scanlatorScroll?.isVisible = false
         binding.startReadingButton.isVisible = false
         if (binding.moreButton.isVisible || binding.moreButton.isInvisible) {
             binding.moreButtonGroup.isInvisible = !isTablet
@@ -716,6 +800,8 @@ class MangaHeaderHolder(
             }
         }
         binding.startReadingButton.isVisible = showReadingButton
+        binding.scanlatorScroll?.isVisible =
+            adapter.delegate.mangaPresenter().allChapterScanlators.count(String::isNotBlank) > 1
     }
 
     override fun onLongClick(view: View?): Boolean {

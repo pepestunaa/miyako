@@ -57,7 +57,7 @@
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/cover_card"
-        android:layout_width="100dp"
+        android:layout_width="116dp"
         android:layout_height="wrap_content"
         app:strokeWidth="0dp"
         app:cardElevation="2dp"
@@ -133,13 +133,25 @@
         app:layout_constraintStart_toStartOf="@id/title"
         app:layout_constraintTop_toBottomOf="@+id/manga_author" />
 
+    <ImageView
+        android:id="@+id/manga_source_icon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginEnd="6dp"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        app:layout_constraintBottom_toBottomOf="@id/manga_source"
+        app:layout_constraintStart_toStartOf="@id/title"
+        app:layout_constraintTop_toTopOf="@id/manga_source" />
+
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/manga_source"
         style="?textAppearanceBodySecondary"
         android:layout_height="wrap_content"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constrainedWidth="true"
+        android:layout_marginStart="22dp"
         android:layout_marginEnd="16dp"
         android:ellipsize="end"
         android:maxLines="2"
@@ -149,6 +161,25 @@
         app:layout_constraintTop_toBottomOf="@id/manga_status"
         tools:text="Mangadex (EN)" />
 
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/manga_language"
+        style="?textAppearanceBodySecondary"
+        android:layout_height="wrap_content"
+        android:layout_width="wrap_content"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constrainedWidth="true"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="16dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textIsSelectable="false"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@id/title"
+        app:layout_constraintTop_toBottomOf="@+id/manga_source"
+        tools:text="Language: English"
+        tools:visibility="visible" />
+
     <androidx.constraintlayout.widget.Barrier
         android:id="@+id/bottom_line"
         android:layout_width="wrap_content"
@@ -156,7 +187,7 @@
         android:layout_margin="6dp"
         android:orientation="horizontal"
         app:barrierDirection="bottom"
-        app:constraint_referenced_ids="manga_source,cover_card" />
+        app:constraint_referenced_ids="manga_source,manga_language,cover_card" />
 
     <HorizontalScrollView
         android:id="@+id/sub_button_scroll"
@@ -375,7 +406,6 @@
         android:tooltipText="@string/sort_and_filter"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/start_reading_button">
 
         <com.google.android.material.textview.MaterialTextView
@@ -393,6 +423,20 @@
             app:layout_constraintEnd_toStartOf="@id/filters_text"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageView
+            android:id="@+id/chapter_layout_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/grid_view"
+            android:padding="5dp"
+            android:src="@drawable/ic_view_module_24dp"
+            app:tint="?attr/colorSecondary"
+            app:layout_constraintBottom_toBottomOf="@id/chapters_title"
+            app:layout_constraintEnd_toStartOf="@id/filter_button"
+            app:layout_constraintTop_toTopOf="@id/chapters_title" />
 
         <ImageView
             android:id="@+id/filter_button"
@@ -419,9 +463,36 @@
             android:textAlignment="textEnd"
             android:textColor="@color/material_on_background_disabled"
             app:layout_constraintBottom_toBottomOf="@id/filter_button"
-            app:layout_constraintEnd_toStartOf="@id/filter_button"
+            app:layout_constraintEnd_toStartOf="@id/chapter_layout_toggle"
             app:layout_constraintStart_toEndOf="@+id/chapters_title"
             app:layout_constraintTop_toTopOf="@id/filter_button"
             tools:text="Read, Unread, Bookmarked, Downloaded, All" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <HorizontalScrollView
+        android:id="@+id/scanlator_scroll"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/chapter_layout"
+        tools:visibility="visible">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/scanlator_chips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            app:chipSpacingHorizontal="8dp"
+            app:selectionRequired="true"
+            app:singleSelection="true"
+            tools:ignore="RtlSymmetry" />
+    </HorizontalScrollView>
 </androidx.constraintlayout.widget.ConstraintLayout>

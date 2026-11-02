@@ -78,7 +78,6 @@ import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.core.preference.toggle
-import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.orientationType
 import eu.kanade.tachiyomi.data.database.models.readingModeType
@@ -262,12 +261,16 @@ class ReaderActivity : BaseActivity<ReaderActivityBinding>() {
 
         const val TRANSITION_NAME = "${BuildConfig.APPLICATION_ID}.TRANSITION_NAME"
         const val VISIBLE_CHAPTERS = "${BuildConfig.APPLICATION_ID}.VISIBLE_CHAPTERS"
+        const val PAGE = "${BuildConfig.APPLICATION_ID}.PAGE"
 
-        fun newIntent(context: Context, manga: Manga, chapter: Chapter): Intent {
+        fun newIntent(context: Context, manga: Manga, chapter: Chapter, page: Int? = null): Intent {
             MainActivity.chapterIdToExitTo = 0L
             val intent = Intent(context, ReaderActivity::class.java)
             intent.putExtra("manga", manga.id)
             intent.putExtra("chapter", chapter.id)
+            if (page != null) {
+                intent.putExtra(PAGE, page)
+            }
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             return intent
         }
@@ -310,6 +313,9 @@ class ReaderActivity : BaseActivity<ReaderActivityBinding>() {
         super.onCreate(savedInstanceState)
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        if (savedInstanceState == null) {
+            intentPageNumber = intent.getIntExtra(PAGE, -1).takeIf { it >= 0 }
+        }
         val a = obtainStyledAttributes(intArrayOf(AR.attr.windowLightStatusBar))
         val lightStatusBar = a.getBoolean(0, false)
         a.recycle()
@@ -2030,7 +2036,6 @@ class ReaderActivity : BaseActivity<ReaderActivityBinding>() {
                 }
                 val data = outputStream.toByteArray()
                 SubsamplingScaleImageView.setDisplayProfile(data)
-                TachiyomiImageDecoder.displayProfile = data
             }
         }
 

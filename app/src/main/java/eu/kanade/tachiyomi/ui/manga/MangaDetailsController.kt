@@ -43,6 +43,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.palette.graphics.Palette
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -88,6 +89,8 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.main.SearchActivity
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
+import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChaptersSortBottomSheet
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
 import eu.kanade.tachiyomi.ui.manga.track.TrackingBottomSheet
@@ -146,6 +149,7 @@ import java.io.IOException
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import yokai.domain.manga.models.cover
@@ -500,10 +504,11 @@ class MangaDetailsController :
     @SuppressLint("ClickableViewAccessibility")
     private fun setRecycler(view: View) {
         adapter = MangaDetailsAdapter(this)
+        adapter?.setPageGridMode(isPageGridEnabled())
 
         binding.recycler.adapter = adapter
         adapter?.isSwipeEnabled = true
-        binding.recycler.layoutManager = LinearLayoutManagerAccurateOffset(view.context)
+        binding.recycler.layoutManager = chapterLayoutManager(view.context)
         binding.recycler.addItemDecoration(
             MangaDetailsDivider(view.context),
         )
@@ -563,6 +568,64 @@ class MangaDetailsController :
                 }
             }
             false
+        }
+    }
+
+    private fun isPageGridEnabled(): Boolean =
+        !isTablet &&
+            presenter.preferences.chapterGridLayout().get() &&
+            manga?.isLocal() != true
+
+    private fun chapterLayoutManager(context: Context): RecyclerView.LayoutManager {
+        if (!isTablet && presenter.preferences.chapterGridLayout().get()) {
+            return GridLayoutManager(context, 3).apply {
+                spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                    override fun getSpanSize(position: Int): Int {
+                        val item = adapter?.getItem(position)
+                        return if (item is ChapterItem || item is ChapterPageItem) 1 else 3
+                    }
+                }
+            }
+        }
+        return LinearLayoutManagerAccurateOffset(context)
+    }
+
+    override fun toggleChapterLayout() {
+        val context = view?.context ?: return
+        if (isTablet) return
+        val prefs = presenter.preferences
+        prefs.chapterGridLayout().set(!prefs.chapterGridLayout().get())
+        adapter?.setPageGridMode(isPageGridEnabled())
+        binding.recycler.layoutManager = chapterLayoutManager(context)
+        binding.recycler.post { getHeader()?.bind(presenter.headerItem) }
+    }
+
+    fun onPageSectionBound(section: ChapterPagesSectionItem) {
+        val adapter = adapter ?: return
+        if (!adapter.pageGridMode || !adapter.pageSectionShouldLoad(section)) return
+        adapter.markPageSectionLoading(section)
+        binding.recycler.post {
+            if (view != null) adapter.notifyPageSection(section)
+        }
+        loadSectionPages(section)
+    }
+
+    fun retryPageSection(section: ChapterPagesSectionItem) {
+        val adapter = adapter ?: return
+        if (!adapter.pageGridMode) return
+        adapter.resetPageSection(section)
+        adapter.markPageSectionLoading(section)
+        adapter.notifyPageSection(section)
+        loadSectionPages(section)
+    }
+
+    private fun loadSectionPages(section: ChapterPagesSectionItem) {
+        presenter.presenterScope.launch {
+            val pages = presenter.loadPageList(section.chapter)
+            withUIContext {
+                if (view == null) return@withUIContext
+                adapter?.onPagesLoaded(section, pages)
+            }
         }
     }
 
@@ -890,6 +953,7 @@ class MangaDetailsController :
 
     fun updateHeader() {
         binding.swipeRefresh.isRefreshing = presenter.isLoading
+        syncPageGridMode()
         adapter?.setChapters(presenter.chapters)
         tabletAdapter?.notifyItemChanged(0)
         addMangaHeader()
@@ -916,12 +980,23 @@ class MangaDetailsController :
     fun updateChapters() {
         view ?: return
         binding.swipeRefresh.isRefreshing = presenter.isLoading
+        syncPageGridMode()
         tabletAdapter?.notifyItemChanged(0)
         adapter?.setChapters(presenter.chapters)
         addMangaHeader()
         updateFab()
         colorToolbar(binding.recycler.canScrollVertically(-1))
         updateMenuVisibility(activityBinding?.toolbar?.menu)
+    }
+
+    private fun syncPageGridMode() {
+        val adapter = adapter ?: return
+        val context = view?.context ?: return
+        val enabled = isPageGridEnabled()
+        if (adapter.pageGridMode == enabled) return
+        adapter.setPageGridMode(enabled)
+        binding.recycler.layoutManager = chapterLayoutManager(context)
+        binding.recycler.post { getHeader()?.bind(presenter.headerItem) }
     }
 
     private fun addMangaHeader() {
@@ -941,7 +1016,12 @@ class MangaDetailsController :
     fun refreshAdapter() = adapter?.notifyDataSetChanged()
 
     override fun onItemClick(view: View?, position: Int): Boolean {
-        val chapterItem = (adapter?.getItem(position) as? ChapterItem) ?: return false
+        val item = adapter?.getItem(position)
+        if (item is ChapterPageItem) {
+            openChapter(item.chapter, page = item.page.index)
+            return false
+        }
+        val chapterItem = (item as? ChapterItem) ?: return false
         val chapter = chapterItem.chapter
         if (actionMode != null) {
             if (startingRangeChapterPos == null) {
@@ -1144,7 +1224,7 @@ class MangaDetailsController :
         presenter.markChaptersRead(chapters, false)
     }
 
-    private fun openChapter(chapter: Chapter, sharedElement: View? = null) {
+    private fun openChapter(chapter: Chapter, sharedElement: View? = null, page: Int? = null) {
         (activity as? AppCompatActivity)?.apply {
             if (sharedElement != null) {
                 val (intent, bundle) = ReaderActivity
@@ -1162,7 +1242,7 @@ class MangaDetailsController :
                 intent.putExtra(ReaderActivity.VISIBLE_CHAPTERS, chapterRange)
                 startActivity(intent, bundle)
             } else {
-                startActivity(ReaderActivity.newIntent(this, manga!!, chapter))
+                startActivity(ReaderActivity.newIntent(this, manga!!, chapter, page))
             }
         }
     }
