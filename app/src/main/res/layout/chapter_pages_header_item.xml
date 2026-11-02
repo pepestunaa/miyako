@@ -23,6 +23,17 @@
         android:textAppearance="?textAppearanceBodyMedium"
         tools:text="Ch. 6 - Summer Trip" />
 
+    <TextView
+        android:id="@+id/chapter_pages_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textAppearance="?textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:visibility="gone"
+        tools:text="24 pages"
+        tools:visibility="visible" />
+
     <ProgressBar
         android:id="@+id/chapter_pages_progress"
         android:layout_width="18dp"

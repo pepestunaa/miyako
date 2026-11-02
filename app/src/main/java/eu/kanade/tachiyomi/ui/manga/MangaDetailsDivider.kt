@@ -9,7 +9,11 @@ import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isLTR
 import android.R as AR
 
-class MangaDetailsDivider(context: Context, val padding: Int = 12.dpToPx) : androidx.recyclerview.widget.RecyclerView.ItemDecoration() {
+class MangaDetailsDivider(
+    context: Context,
+    val padding: Int = 12.dpToPx,
+    private val isEnabled: () -> Boolean = { true },
+) : androidx.recyclerview.widget.RecyclerView.ItemDecoration() {
 
     private val divider: Drawable
 
@@ -24,6 +28,7 @@ class MangaDetailsDivider(context: Context, val padding: Int = 12.dpToPx) : andr
         parent: androidx.recyclerview.widget.RecyclerView,
         state: androidx.recyclerview.widget.RecyclerView.State,
     ) {
+        if (!isEnabled()) return
         val childCount = parent.childCount
         for (i in 0 until childCount - 1) {
             val child = parent.getChildAt(i)
@@ -46,6 +51,10 @@ class MangaDetailsDivider(context: Context, val padding: Int = 12.dpToPx) : andr
         parent: androidx.recyclerview.widget.RecyclerView,
         state: androidx.recyclerview.widget.RecyclerView.State,
     ) {
+        if (!isEnabled()) {
+            outRect.setEmpty()
+            return
+        }
         outRect.set(0, 0, 0, divider.intrinsicHeight)
     }
 }

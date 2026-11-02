@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
 class ChapterPageItem(
     val chapter: Chapter,
     val page: Page,
+    val isCurrentPage: Boolean = false,
 ) : AbstractFlexibleItem<ChapterPageHolder>() {
 
     override fun getLayoutRes(): Int {
@@ -46,12 +47,14 @@ class ChapterPageItem(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other is ChapterPageItem) {
-            return chapter.id == other.chapter.id && page.index == other.page.index
+            return chapter.id == other.chapter.id &&
+                page.index == other.page.index &&
+                isCurrentPage == other.isCurrentPage
         }
         return false
     }
 
     override fun hashCode(): Int {
-        return 31 * (chapter.id ?: 0L).hashCode() + page.index
+        return 31 * (31 * (chapter.id ?: 0L).hashCode() + page.index) + isCurrentPage.hashCode()
     }
 }

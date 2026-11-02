@@ -408,13 +408,36 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/start_reading_button">
 
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/chapter_layout_tabs"
+            style="@style/Theme.Widget.Tabs.Highlight"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tabGravity="fill">
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/chapters" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/pages" />
+        </com.google.android.material.tabs.TabLayout>
+
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/chapters_title"
             style="?textAppearanceTitleSmall"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="4dp"
             android:layout_marginBottom="12dp"
             android:maxLines="1"
             android:text="@string/chapters"
@@ -422,21 +445,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@id/filters_text"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <ImageView
-            android:id="@+id/chapter_layout_toggle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/grid_view"
-            android:padding="5dp"
-            android:src="@drawable/ic_view_module_24dp"
-            app:tint="?attr/colorSecondary"
-            app:layout_constraintBottom_toBottomOf="@id/chapters_title"
-            app:layout_constraintEnd_toStartOf="@id/filter_button"
-            app:layout_constraintTop_toTopOf="@id/chapters_title" />
+            app:layout_constraintTop_toBottomOf="@id/chapter_layout_tabs" />
 
         <ImageView
             android:id="@+id/filter_button"
@@ -463,7 +472,7 @@
             android:textAlignment="textEnd"
             android:textColor="@color/material_on_background_disabled"
             app:layout_constraintBottom_toBottomOf="@id/filter_button"
-            app:layout_constraintEnd_toStartOf="@id/chapter_layout_toggle"
+            app:layout_constraintEnd_toStartOf="@id/filter_button"
             app:layout_constraintStart_toEndOf="@+id/chapters_title"
             app:layout_constraintTop_toTopOf="@id/filter_button"
             tools:text="Read, Unread, Bookmarked, Downloaded, All" />

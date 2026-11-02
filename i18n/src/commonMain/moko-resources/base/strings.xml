@@ -66,6 +66,7 @@
 
     <!-- Chapters -->
     <string name="chapters">Chapters</string>
+    <string name="pages">Pages</string>
     <string name="new_chapters">New chapters</string>
     <string name="unread">Unread</string>
     <string name="last_read_chapter_">Last read Chapter %1$s</string>

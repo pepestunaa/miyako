@@ -28,6 +28,9 @@ class ChapterPagesSectionHolder(
         )
 
         binding.chapterPagesProgress.isVisible = item.state == ChapterPagesSectionItem.State.Loading
+        val pageCount = item.pageCount.takeIf { item.state == ChapterPagesSectionItem.State.Loaded && it > 0 }
+        binding.chapterPagesCount.isVisible = pageCount != null
+        binding.chapterPagesCount.text = pageCount?.let { context.getString(MR.strings.pages_, it.toString()) }
         val status = when (item.state) {
             ChapterPagesSectionItem.State.Loaded ->
                 if (item.pageCount == 0) context.getString(MR.strings.no_pages_found) else null

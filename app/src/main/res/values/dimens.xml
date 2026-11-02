@@ -44,4 +44,8 @@
     <dimen name="material_component_lists_padding_above_list">8dp</dimen>
     <dimen name="material_component_lists_two_line_height">56dp</dimen>
     <dimen name="material_component_lists_text_left_padding">72dp</dimen>
+
+    <!-- Manga details page grid -->
+    <dimen name="chapter_page_grid_preferred_width">120dp</dimen>
+    <dimen name="chapter_page_grid_spacing">8dp</dimen>
 </resources>
