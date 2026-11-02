@@ -3,13 +3,17 @@ package eu.kanade.tachiyomi.ui.manga
 import android.view.ActionMode
 import android.view.View
 import android.widget.TextView
+import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import dev.icerock.moko.resources.StringResource
 import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 import yokai.i18n.MR
 import yokai.util.lang.getString
 import dev.icerock.moko.resources.compose.stringResource
+import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.manga.chapter.BaseChapterAdapter
@@ -39,6 +43,7 @@ class MangaDetailsAdapter(
 
     private val pageSections = HashMap<Long, ChapterPagesSectionItem>()
     private val chapterPages = HashMap<Long, List<Page>>()
+    private var currentPage: Pair<Long, Int>? = null
 
     val delegate: MangaDetailsInterface = controller
     val presenter = controller.presenter
@@ -69,22 +74,33 @@ class MangaDetailsAdapter(
             performFilter()
             return
         }
+        refreshCurrentPage()
         val gridItems = mutableListOf<IFlexible<*>>()
         for (chapterItem in filteredItems()) {
             val chapter = chapterItem.chapter
             val chapterId = chapter.id ?: continue
             val section = pageSections.getOrPut(chapterId) { ChapterPagesSectionItem(chapter) }
+            section.chapter = chapter
             section.state = when {
                 chapterPages.containsKey(chapterId) -> ChapterPagesSectionItem.State.Loaded
                 else -> section.state
             }
             section.pageCount = chapterPages[chapterId]?.size ?: 0
+            section.pagesAttached = chapterPages.containsKey(chapterId)
             gridItems.add(section)
             chapterPages[chapterId]?.forEach { page ->
-                gridItems.add(ChapterPageItem(chapter, page))
+                gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
             }
         }
-        updateDataSet(gridItems, false)
+        updateItems(gridItems)
+    }
+
+    private fun updateItems(items: List<IFlexible<*>>) {
+        // FlexibleAdapter skips updateDataSet while a filter is active; filtering is handled by filteredItems().
+        val filter = getFilter(String::class.java)
+        if (!filter.isNullOrEmpty()) setFilter("")
+        updateDataSet(items, false)
+        if (!filter.isNullOrEmpty()) setFilter(filter)
     }
 
     fun pageSectionShouldLoad(section: ChapterPagesSectionItem): Boolean {
@@ -96,41 +112,136 @@ class MangaDetailsAdapter(
     fun markPageSectionLoading(section: ChapterPagesSectionItem) {
         section.state = ChapterPagesSectionItem.State.Loading
         section.pageCount = 0
+        section.refreshBoundHolder()
     }
 
     fun resetPageSection(section: ChapterPagesSectionItem) {
         section.state = ChapterPagesSectionItem.State.Idle
     }
 
-    fun notifyPageSection(section: ChapterPagesSectionItem) {
-        notifySectionChanged(section)
-    }
-
-    fun onPagesLoaded(section: ChapterPagesSectionItem, pages: List<Page>?) {
+    fun onPagesLoaded(
+        section: ChapterPagesSectionItem,
+        pages: List<Page>?,
+        attachItems: Boolean = true,
+    ) {
         val chapterId = section.chapter.id ?: return
         if (pages == null) {
             section.state = ChapterPagesSectionItem.State.Error
-            notifySectionChanged(section)
+            section.refreshBoundHolder()
             return
         }
 
+        refreshCurrentPage()
         section.state = ChapterPagesSectionItem.State.Loaded
         section.pageCount = pages.size
         chapterPages[chapterId] = pages
 
         val sectionPosition = getGlobalPositionOf(section)
-        if (sectionPosition != -1 && pages.isNotEmpty() && pageGridMode) {
-            val pageItems = pages.map { ChapterPageItem(section.chapter, it) as IFlexible<*> }
-            addItems(sectionPosition + 1, pageItems)
+        when {
+            sectionPosition == -1 || !pageGridMode -> Unit
+            pages.isEmpty() -> section.pagesAttached = true
+            attachItems -> {
+                insertPageItems(section, sectionPosition, pages)
+                section.pagesAttached = true
+            }            // Held back while scrolling; attachCachedPages() inserts them when the scroll settles.
+            else -> section.pagesAttached = false
         }
-        notifySectionChanged(section)
+        section.refreshBoundHolder()
     }
 
-    fun pagesForChapter(chapterId: Long): List<Page>? = chapterPages[chapterId]
+    fun attachCachedPages(section: ChapterPagesSectionItem) {
+        if (section.pagesAttached || !pageGridMode) return
+        val chapterId = section.chapter.id ?: return
+        val pages = chapterPages[chapterId] ?: return
+        if (pages.isEmpty()) {
+            section.pagesAttached = true
+            return
+        }
+        val recycler = recyclerView
+        if (recycler != null && recycler.isComputingLayout) {
+            recycler.post {
+                if (!controller.isListScrolling()) attachCachedPages(section)
+            }
+            return
+        }
+        val sectionPosition = getGlobalPositionOf(section)
+        if (sectionPosition != -1) {
+            insertPageItems(section, sectionPosition, pages)
+            section.pagesAttached = true
+        }
+    }
 
-    private fun notifySectionChanged(section: ChapterPagesSectionItem) {
-        val position = getGlobalPositionOf(section)
-        if (position != -1) notifyItemChanged(position)
+    private fun insertPageItems(
+        section: ChapterPagesSectionItem,
+        sectionPosition: Int,
+        pages: List<Page>,
+    ) {
+        val chapter = section.chapter
+        val pageItems = pages.map {
+            ChapterPageItem(chapter, it, isCurrentPage(chapter, it)) as IFlexible<*>
+        }
+        val recycler = recyclerView
+        if (recycler == null) {
+            addItems(sectionPosition + 1, pageItems)
+            return
+        }
+
+        // RecyclerView doesn't compensate the scroll position when rows appear above the viewport,
+        // so pin the current first visible row before inserting pages for an off-screen section.
+        val firstChild = recycler.getChildAt(0)
+        val firstPosition = firstChild?.let { recycler.getChildAdapterPosition(it) }
+            ?: RecyclerView.NO_POSITION
+        val firstItem = if (firstPosition != RecyclerView.NO_POSITION) {
+            getItem(firstPosition)
+        } else {
+            null
+        }
+        val firstTop = firstChild?.top
+        val insertsAboveViewport =
+            firstPosition != RecyclerView.NO_POSITION && sectionPosition + 1 <= firstPosition
+
+        val animator = recycler.itemAnimator
+        recycler.itemAnimator = null
+        try {
+            addItems(sectionPosition + 1, pageItems)
+        } finally {
+            recycler.doOnNextLayout { recycler.itemAnimator = animator }
+        }
+
+        if (insertsAboveViewport && firstItem != null && firstTop != null) {
+            val newPosition = getGlobalPositionOf(firstItem)
+            if (newPosition != RecyclerView.NO_POSITION) {
+                (recycler.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(newPosition, firstTop - recycler.paddingTop)
+            }
+        }
+    }
+
+    fun findPositionForChapter(chapterId: Long): Int? {
+        for (position in 0 until itemCount) {
+            val chapter = when (val item = getItem(position)) {
+                is ChapterItem -> item.chapter
+                is ChapterPagesSectionItem -> item.chapter
+                else -> null
+            }
+            if (chapter?.id == chapterId) return position
+        }
+        return null
+    }
+
+    private fun refreshCurrentPage() {
+        val chapter = presenter.getNextUnreadChapter()?.chapter
+        val chapterId = chapter?.id
+        currentPage = if (chapterId != null && !chapter.read && chapter.last_page_read > 0) {
+            chapterId to chapter.last_page_read
+        } else {
+            null
+        }
+    }
+
+    private fun isCurrentPage(chapter: Chapter, page: Page): Boolean {
+        val current = currentPage ?: return false
+        return chapter.id == current.first && page.index == current.second
     }
 
     private fun filteredItems(): List<ChapterItem> {
@@ -155,7 +266,7 @@ class MangaDetailsAdapter(
             rebuildPageGrid()
             return
         }
-        updateDataSet(filteredItems())
+        updateItems(filteredItems())
     }
 
     override fun onItemSwiped(position: Int, direction: Int) {
@@ -175,8 +286,11 @@ class MangaDetailsAdapter(
     }
 
     override fun onCreateBubbleText(position: Int): String {
-        val chapter =
-            getItem(position) as? ChapterItem ?: return recyclerView.context.getString(MR.strings.top)
+        val chapter = when (val item = getItem(position)) {
+            is ChapterItem -> item.chapter
+            is ChapterPagesSectionItem -> item.chapter
+            else -> return recyclerView.context.getString(MR.strings.top)
+        }
         return when (val scrollType = presenter.scrollType) {
             MangaDetailsPresenter.MULTIPLE_VOLUMES, MangaDetailsPresenter.MULTIPLE_SEASONS -> {
                 val volume = ChapterUtil.getGroupNumber(chapter)
@@ -201,14 +315,14 @@ class MangaDetailsAdapter(
         }
     }
 
-    private fun getChapterName(item: ChapterItem): String {
-        return if (item.chapter_number > 0) {
+    private fun getChapterName(chapter: Chapter): String {
+        return if (chapter.chapter_number > 0) {
             recyclerView.context.getString(
                 MR.strings.chapter_,
-                decimalFormat.format(item.chapter_number),
+                decimalFormat.format(chapter.chapter_number),
             )
         } else {
-            item.name
+            chapter.name
         }
     }
 
@@ -235,7 +349,7 @@ class MangaDetailsAdapter(
         fun topCoverHeight(): Int
         fun showFloatingActionMode(view: TextView, content: String? = null, isTag: Boolean = false)
         fun showChapterFilter()
-        fun toggleChapterLayout()
+        fun setChapterLayout(usePageGrid: Boolean)
         fun favoriteManga(longPress: Boolean)
         fun copyContentToClipboard(content: String, label: StringResource, useToast: Boolean = false)
         fun copyContentToClipboard(content: String, label: Int, useToast: Boolean = false)

@@ -90,8 +90,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -137,7 +137,7 @@ class MangaDetailsPresenter(
     private val getExcludedScanlators: GetExcludedScanlators by injectLazy()
 
     private val chapterCache: ChapterCache by injectLazy()
-    private val pageListMutex = Mutex()
+    private val pageListRequests = Semaphore(3)
 
     private val networkPreferences: NetworkPreferences by injectLazy()
 
@@ -245,9 +245,10 @@ class MangaDetailsPresenter(
             .launchIn(presenterScope)
 
         val fetchMangaNeeded = !manga.initialized
-        val fetchChaptersNeeded = runBlocking { getChaptersNow() }.isEmpty()
 
         presenterScope.launch {
+            // Load chapters off the main thread before touching the UI so opening stays responsive.
+            val fetchChaptersNeeded = getChaptersNow().isEmpty()
             isLoading = true
             withUIContext {
                 controller.updateHeader()
@@ -817,7 +818,7 @@ class MangaDetailsPresenter(
 
     suspend fun loadPageList(chapter: Chapter): List<Page>? {
         val httpSource = resolveHttpSource() ?: return null
-        return pageListMutex.withLock {
+        return pageListRequests.withPermit {
             try {
                 chapterCache.getPageListFromCache(chapter)
             } catch (e: CancellationException) {
