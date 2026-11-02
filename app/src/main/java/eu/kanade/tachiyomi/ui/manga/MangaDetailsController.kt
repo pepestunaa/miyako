@@ -610,8 +610,23 @@ class MangaDetailsController :
         val touchSlop = ViewConfiguration.get(recycler.context).scaledTouchSlop
         var downRawX = 0f
         var downRawY = 0f
+        var lastRawX = 0f
+        var lastRawY = 0f
         var horizontalSwipe = false
+        // Another touch listener can hold the start of a gesture (a row snapping back, for
+        // example) and then this listener never sees its DOWN, so the first move re-anchors.
+        var anchored = false
         swipeAnimating = false
+
+        fun anchor(recycler: RecyclerView, e: MotionEvent) {
+            downRawX = e.rawX
+            downRawY = e.rawY
+            lastRawX = e.rawX
+            lastRawY = e.rawY
+            horizontalSwipe = false
+            blockLayoutSwipe = startsOnSwipeableChapter(recycler, e)
+            anchored = true
+        }
 
         recycler.addOnItemTouchListener(
             object : RecyclerView.SimpleOnItemTouchListener() {
@@ -621,20 +636,26 @@ class MangaDetailsController :
                         MotionEvent.ACTION_DOWN -> {
                             rv.animate().cancel()
                             rv.translationX = 0f
-                            downRawX = e.rawX
-                            downRawY = e.rawY
-                            horizontalSwipe = false
-                            blockLayoutSwipe = startsOnSwipeableChapter(rv, e)
+                            anchor(rv, e)
                         }
                         MotionEvent.ACTION_MOVE -> {
+                            if (!anchored) {
+                                anchor(rv, e)
+                                return false
+                            }
                             val dx = e.rawX - downRawX
                             val dy = e.rawY - downRawY
+                            // Judge by the latest movement too: a stale anchor must not turn a
+                            // vertical drag into a page switch.
+                            val stepX = e.rawX - lastRawX
+                            val stepY = e.rawY - lastRawY
                             if (!horizontalSwipe &&
                                 !blockLayoutSwipe &&
                                 !isTablet &&
                                 manga?.isLocal() != true &&
                                 abs(dx) > touchSlop &&
-                                abs(dx) > abs(dy) * 1.5f
+                                abs(dx) > abs(dy) * 1.5f &&
+                                abs(stepX) > abs(stepY) * 1.5f
                             ) {
                                 horizontalSwipe = true
                             }
@@ -643,6 +664,12 @@ class MangaDetailsController :
                                 // translation stable instead of feeding the view's own offset back in.
                                 rv.translationX = dx * swipeFollowFactor(dx)
                             }
+                            lastRawX = e.rawX
+                            lastRawY = e.rawY
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            horizontalSwipe = false
+                            anchored = false
                         }
                     }
                     // Intercepting cancels the child press so a swipe doesn't also click the row/button under it.
@@ -653,6 +680,10 @@ class MangaDetailsController :
                     if (swipeAnimating) return
                     when (e.actionMasked) {
                         MotionEvent.ACTION_MOVE -> {
+                            if (!anchored) {
+                                anchor(rv, e)
+                                return
+                            }
                             if (horizontalSwipe) {
                                 val dx = e.rawX - downRawX
                                 rv.translationX = dx * swipeFollowFactor(dx)
@@ -663,10 +694,12 @@ class MangaDetailsController :
                                 finishLayoutSwipe(rv, e.rawX - downRawX, minDistance)
                             }
                             horizontalSwipe = false
+                            anchored = false
                         }
                         MotionEvent.ACTION_CANCEL -> {
                             if (horizontalSwipe) settleLayoutSwipe(rv)
                             horizontalSwipe = false
+                            anchored = false
                         }
                     }
                 }
