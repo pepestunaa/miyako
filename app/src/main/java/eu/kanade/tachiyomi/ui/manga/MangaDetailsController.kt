@@ -642,9 +642,9 @@ class MangaDetailsController :
                         MotionEvent.ACTION_UP -> {
                             val dx = e.x - downX
                             if (horizontalSwipe && abs(dx) > minDistance) {
-                                // Either direction flips between Chapters and Pages, so swiping
-                                // right opens Pages and swiping left brings Chapters back.
-                                adapter?.let { setChapterLayout(!it.pageGridMode) }
+                                // Match the tab order: swipe right opens Pages, swipe left returns
+                                // to Chapters. Swipes past the first/last view stay put.
+                                setChapterLayout(dx > 0)
                             }
                             horizontalSwipe = false
                         }
