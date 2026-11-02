@@ -418,8 +418,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:tabGravity="center"
-            app:tabMode="scrollable">
+            app:tabGravity="fill">
 
             <com.google.android.material.tabs.TabItem
                 android:layout_width="wrap_content"
