@@ -31,20 +31,17 @@ import coil3.request.error
 import coil3.request.placeholder
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
-import com.google.android.material.tabs.TabLayout
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.seriesType
 import eu.kanade.tachiyomi.databinding.ChapterHeaderItemBinding
 import eu.kanade.tachiyomi.databinding.MangaHeaderItemBinding
 import eu.kanade.tachiyomi.domain.manga.models.Manga
 import eu.kanade.tachiyomi.source.SourceManager
-import eu.kanade.tachiyomi.source.icon
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.nameBasedOnEnabledLanguages
 import eu.kanade.tachiyomi.ui.base.holder.BaseFlexibleViewHolder
 import eu.kanade.tachiyomi.util.isLocal
 import eu.kanade.tachiyomi.util.lang.toNormalized
-import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.getResourceColor
 import eu.kanade.tachiyomi.util.system.isInNightMode
 import eu.kanade.tachiyomi.util.system.isLTR
@@ -83,7 +80,6 @@ class MangaHeaderHolder(
     var hadSelection = false
     private var canCollapse = true
     private var updatingScanlatorChips = false
-    private var updatingLayoutTabs = false
 
     init {
 
@@ -97,16 +93,6 @@ class MangaHeaderHolder(
             this ?: return@with
             startReadingButton.transitionName = "details start reading transition"
             chapterLayout.setOnClickListener { adapter.delegate.showChapterFilter() }
-            chapterLayoutTabs?.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-                override fun onTabSelected(tab: TabLayout.Tab) {
-                    if (updatingLayoutTabs) return
-                    adapter.delegate.setChapterLayout(tab.position == TAB_PAGES)
-                }
-
-                override fun onTabUnselected(tab: TabLayout.Tab) = Unit
-
-                override fun onTabReselected(tab: TabLayout.Tab) = Unit
-            })
             startReadingButton.setOnClickListener { adapter.delegate.readNextChapter(it) }
             topView.updateLayoutParams<ConstraintLayout.LayoutParams> {
                 height = adapter.delegate.topCoverHeight()
@@ -309,13 +295,6 @@ class MangaHeaderHolder(
                 itemView.context.getString(MR.plurals.chapters_plural, count, count)
             chapterBinding.filtersText.text = presenter.currentFilters()
         }
-    }
-
-    fun updateChapterLayoutTabs() {
-        val tabs = binding?.chapterLayoutTabs ?: return
-        updatingLayoutTabs = true
-        tabs.getTabAt(if (adapter.pageGridMode) TAB_PAGES else TAB_CHAPTERS)?.select()
-        updatingLayoutTabs = false
     }
 
     private fun setScanlatorChips(binding: MangaHeaderItemBinding) {
@@ -528,26 +507,7 @@ class MangaHeaderHolder(
                 }
             }
         }
-        binding.mangaSourceIcon?.apply {
-            setImageDrawable(presenter.source.icon())
-            isVisible = drawable != null
-        }
-
-        binding.mangaLanguage?.apply {
-            val lang = presenter.source.lang
-                ?.takeIf { !manga.isLocal() && it.isNotBlank() && it != "other" }
-            isVisible = lang != null
-            text = lang?.let {
-                itemView.context.getString(
-                    MR.strings.language_,
-                    LocaleHelper.getLocalizedDisplayName(it),
-                )
-            }
-        }
-
         binding.filtersText.text = presenter.currentFilters()
-        binding.chapterLayoutTabs?.isVisible = !manga.isLocal() && !isTablet
-        updateChapterLayoutTabs()
         setScanlatorChips(binding)
 
         if (manga.isLocal()) {
@@ -819,8 +779,4 @@ class MangaHeaderHolder(
         return false
     }
 
-    companion object {
-        private const val TAB_CHAPTERS = 0
-        private const val TAB_PAGES = 1
-    }
 }

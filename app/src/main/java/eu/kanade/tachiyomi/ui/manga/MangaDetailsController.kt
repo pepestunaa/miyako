@@ -828,7 +828,6 @@ class MangaDetailsController :
             pageGridEnabled = usePageGrid
             adapter.setPageGridMode(usePageGrid)
             (recycler.layoutManager as? ChapterLayoutManager)?.updateLayoutMode()
-            getHeader()?.updateChapterLayoutTabs()
             recycler.invalidateItemDecorations()
 
             // Keep the same chapter at the same on-screen offset instead of jumping to the top.
