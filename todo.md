@@ -1,0 +1,3 @@
+- improve ui/ux dari grid view karena sangat buruk aku suka impleemtasi dari usagi kamu bisa lihat implementasi dari usagi untuk detail page nya di parent project ini tapi tetap mempertahankan ui/ux dari yokai
+- optimization cache and ram you can see the example on usagi apk on this parent project
+- 
