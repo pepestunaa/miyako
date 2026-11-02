@@ -33,8 +33,6 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import okio.Buffer
 import okio.BufferedSource
-import tachiyomi.decoder.Format
-import tachiyomi.decoder.ImageDecoder
 
 object ImageUtil {
 
@@ -51,16 +49,7 @@ object ImageUtil {
 
     fun findImageType(stream: InputStream): ImageType? {
         return try {
-            when (getImageType(stream)?.format) {
-                Format.Avif -> ImageType.AVIF
-                Format.Gif -> ImageType.GIF
-                Format.Heif -> ImageType.HEIF
-                Format.Jpeg -> ImageType.JPEG
-                Format.Jxl -> ImageType.JXL
-                Format.Png -> ImageType.PNG
-                Format.Webp -> ImageType.WEBP
-                else -> null
-            }
+            getImageType(stream)?.type
         } catch (e: Exception) {
             null
         }
@@ -87,14 +76,14 @@ object ImageUtil {
 
     fun isAnimatedAndSupported(source: BufferedSource): Boolean {
         return try {
-            val type = getImageType(source.peek().inputStream()) ?: return false
+            val detected = getImageType(source.peek().inputStream()) ?: return false
             // https://coil-kt.github.io/coil/getting_started/#supported-image-formats
-            when (type.format) {
-                Format.Gif -> true
+            when (detected.type) {
+                ImageType.GIF -> true
                 // Animated WebP on Android 9+
-                Format.Webp -> type.isAnimated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ImageType.WEBP -> detected.isAnimated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                 // Animated Heif on Android 11+
-                Format.Heif -> type.isAnimated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ImageType.HEIF -> detected.isAnimated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 else -> false
             }
         } catch (_: Exception) {
@@ -113,7 +102,7 @@ object ImageUtil {
         WEBP("image/webp", "webp"),
     }
 
-    private fun getImageType(stream: InputStream): tachiyomi.decoder.ImageType? {
+    private fun getImageType(stream: InputStream): DetectedImageType? {
         val bytes = ByteArray(32)
 
         val length = if (stream.markSupported()) {
@@ -123,12 +112,50 @@ object ImageUtil {
             stream.read(bytes, 0, bytes.size)
         }
 
-        if (length == -1) {
+        if (length < 12) {
             return null
         }
 
-        return ImageDecoder.findType(bytes)
+        return detectImageType(bytes)
     }
+
+    private fun detectImageType(bytes: ByteArray): DetectedImageType? {
+        fun matches(offset: Int, ascii: String): Boolean {
+            for (i in ascii.indices) {
+                if (bytes[offset + i] != ascii[i].code.toByte()) return false
+            }
+            return true
+        }
+
+        return when {
+            bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() ->
+                DetectedImageType(ImageType.JPEG)
+            bytes[0] == 0x89.toByte() && matches(1, "PNG") ->
+                DetectedImageType(ImageType.PNG)
+            matches(0, "GIF8") ->
+                DetectedImageType(ImageType.GIF, isAnimated = true)
+            matches(0, "RIFF") && matches(8, "WEBP") -> {
+                val isAnimated = matches(12, "VP8X") && (bytes[20].toInt() and 0x02) != 0
+                DetectedImageType(ImageType.WEBP, isAnimated)
+            }
+            matches(4, "ftyp") -> when (String(bytes, 8, 4, Charsets.US_ASCII)) {
+                "avif" -> DetectedImageType(ImageType.AVIF)
+                "avis" -> DetectedImageType(ImageType.AVIF, isAnimated = true)
+                "jxl " -> DetectedImageType(ImageType.JXL)
+                "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1", "mif2" ->
+                    DetectedImageType(ImageType.HEIF)
+                else -> null
+            }
+            bytes[0] == 0xFF.toByte() && bytes[1] == 0x0A.toByte() ->
+                DetectedImageType(ImageType.JXL)
+            else -> null
+        }
+    }
+
+    private data class DetectedImageType(
+        val type: ImageType,
+        val isAnimated: Boolean = false,
+    )
 
     fun autoSetBackground(image: Bitmap?, alwaysUseWhite: Boolean, context: Context): Drawable {
         val backgroundColor = if (alwaysUseWhite) {
