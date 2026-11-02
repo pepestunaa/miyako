@@ -81,6 +81,13 @@ android {
         }
     }
 
+    packaging {
+        jniLibs {
+            // Compress native libraries in the APK instead of storing them uncompressed
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".debugYokai"
@@ -127,6 +134,8 @@ android {
     productFlavors {
         create("standard") {
             buildConfigField("Boolean", "INCLUDE_UPDATER", "true")
+            resourceConfigurations.clear()
+            resourceConfigurations.addAll(listOf("en", "in"))
             dimension = "default"
         }
         create("dev") {
@@ -197,8 +206,6 @@ dependencies {
 
     // HTML parser
     implementation(libs.jsoup)
-
-    implementation(libs.play.services.gcm)
 
     // Database
     implementation(libs.sqlite.android)
