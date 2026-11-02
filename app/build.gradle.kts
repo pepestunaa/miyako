@@ -38,6 +38,10 @@ val buildTime: String by lazy {
 
 val supportedAbis = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 
+// Dev-loop helper: -PdevAbi=arm64-v8a packages just the one ABI and skips the universal APK.
+val devAbi = (findProperty("devAbi") as? String)?.takeIf { it in supportedAbis }
+val includedAbis = devAbi?.let { setOf(it) } ?: supportedAbis
+
 android {
     defaultConfig {
         applicationId = "eu.kanade.tachiyomi"
@@ -54,10 +58,12 @@ android {
         buildConfigField("Boolean", "BETA", "false")
         buildConfigField("Boolean", "NIGHTLY", "false")
 
-        ndk {
-            // False positive, we have x86 abi support
-            //noinspection ChromeOsAbiSupport
-            abiFilters += supportedAbis
+        if (devAbi == null) {
+            ndk {
+                // False positive, we have x86 abi support
+                //noinspection ChromeOsAbiSupport
+                abiFilters += includedAbis
+            }
         }
     }
 
@@ -67,8 +73,8 @@ android {
             reset()
             // False positive, we have x86 abi support
             //noinspection ChromeOsAbiSupport
-            include(*supportedAbis.toTypedArray())
-            isUniversalApk = true
+            include(*includedAbis.toTypedArray())
+            isUniversalApk = devAbi == null
         }
     }
 
