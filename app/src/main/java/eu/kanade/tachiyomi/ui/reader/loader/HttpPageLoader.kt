@@ -1,5 +1,9 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
+import android.app.ActivityManager
+import android.app.Application
+import android.os.PowerManager
+import androidx.core.content.getSystemService
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.model.Page
@@ -31,6 +35,7 @@ class HttpPageLoader(
     private val source: HttpSource,
     private val chapterCache: ChapterCache = Injekt.get(),
     private val preferences: PreferencesHelper = Injekt.get(),
+    private val application: Application = Injekt.get(),
 ) : PageLoader() {
 
     override val isLocal: Boolean = false
@@ -42,7 +47,17 @@ class HttpPageLoader(
      */
     private val queue = PriorityBlockingQueue<PriorityPage>()
 
-    private val preloadSize = preferences.preloadSize().get()
+    private val preloadSize = preferences.preloadSize().get().let { size ->
+        if (size > 0 && !canPreload()) 0 else size
+    }
+
+    private fun canPreload(): Boolean {
+        if (application.getSystemService<PowerManager>()?.isPowerSaveMode == true) return false
+        val activityManager = application.getSystemService<ActivityManager>() ?: return true
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        return memoryInfo.availMem > PRELOAD_MIN_AVAILABLE_RAM_BYTES
+    }
 
     init {
         scope.launchIO {
@@ -211,5 +226,9 @@ class HttpPageLoader(
                 throw e
             }
         }
+    }
+
+    companion object {
+        private const val PRELOAD_MIN_AVAILABLE_RAM_BYTES = 80L * 1024 * 1024
     }
 }

@@ -30,6 +30,8 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 // import coil3.request.allowHardware
@@ -294,6 +296,13 @@ open class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.F
                     .build(),
             )
 
+            diskCache(
+                DiskCache.Builder()
+                    .directory((externalCacheDir ?: cacheDir).resolve("image_cache"))
+                    .maxSizeBytes(IMAGE_DISK_CACHE_SIZE_BYTES)
+                    .build(),
+            )
+
             crossfade(true)
             allowRgb565(this@App.getSystemService<ActivityManager>()!!.isLowRamDevice)
             // allowHardware(true)
@@ -321,3 +330,5 @@ fun buildLogWritersToAdd(
 }
 
 private const val ACTION_DISABLE_INCOGNITO_MODE = "tachi.action.DISABLE_INCOGNITO_MODE"
+
+private const val IMAGE_DISK_CACHE_SIZE_BYTES = 64L * 1024 * 1024
