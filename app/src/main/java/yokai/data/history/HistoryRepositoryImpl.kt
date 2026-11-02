@@ -9,18 +9,28 @@ import yokai.domain.history.HistoryRepository
 class HistoryRepositoryImpl(private val handler: DatabaseHandler) : HistoryRepository {
     override suspend fun upsert(chapterId: Long, lastRead: Long, timeRead: Long) =
         handler.awaitOneOrNullExecutable(true) {
-            historyQueries.upsert(chapterId, lastRead, timeRead)
+            historyQueries.update(lastRead, timeRead, chapterId)
+            if (historyQueries.changes().executeAsOne() == 0L) {
+                historyQueries.insert(chapterId, lastRead, timeRead)
+            }
             historyQueries.selectLastInsertedRowId()
         }
 
     override suspend fun bulkUpsert(histories: List<History>) =
         handler.await(true) {
             histories.forEach { history ->
-                historyQueries.upsert(
-                    history.chapter_id,
+                historyQueries.update(
                     history.last_read,
                     history.time_read,
+                    history.chapter_id,
                 )
+                if (historyQueries.changes().executeAsOne() == 0L) {
+                    historyQueries.insert(
+                        history.chapter_id,
+                        history.last_read,
+                        history.time_read,
+                    )
+                }
             }
         }
 

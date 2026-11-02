@@ -9,15 +9,19 @@ CREATE TABLE history(
 
 CREATE INDEX history_history_chapter_id_index ON history(history_chapter_id);
 
-upsert:
-INSERT INTO history(history_chapter_id, history_last_read, history_time_read)
-VALUES(:historyChapterId, :historyLastRead, :historyTimeRead)
-ON CONFLICT(history_chapter_id)
-DO UPDATE
+update:
+UPDATE history
 SET
     history_last_read = :historyLastRead,
     history_time_read = ifnull(history_time_read, 0) + :historyTimeRead
-WHERE history_chapter_id = history_chapter_id;
+WHERE history_chapter_id = :historyChapterId;
+
+insert:
+INSERT INTO history(history_chapter_id, history_last_read, history_time_read)
+VALUES(:historyChapterId, :historyLastRead, :historyTimeRead);
+
+changes:
+SELECT changes();
 
 selectLastInsertedRowId:
 SELECT last_insert_rowid();
