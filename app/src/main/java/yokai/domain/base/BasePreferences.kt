@@ -3,7 +3,6 @@ package yokai.domain.base
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.core.preference.Preference
 import eu.kanade.tachiyomi.core.preference.PreferenceStore
 import eu.kanade.tachiyomi.core.preference.getEnum
 import eu.kanade.tachiyomi.util.system.GLUtil
@@ -30,10 +29,6 @@ class BasePreferences(private val preferenceStore: PreferenceStore) {
     }
 
     fun displayProfile() = preferenceStore.getString("pref_display_profile_key", "")
-
-    fun hasShownOnboarding() = preferenceStore.getBoolean(Preference.appStateKey("onboarding_complete"), false)
-
-    fun crashReport() = preferenceStore.getBoolean("pref_crash_report", true)
 
     fun longTapBrowseNavBehaviour() = preferenceStore.getEnum("pref_browser_long_tap", LongTapBrowse.DEFAULT)
 

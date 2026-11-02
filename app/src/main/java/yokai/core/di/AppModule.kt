@@ -18,12 +18,10 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.library.CustomMangaManager
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
-import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.util.chapter.ChapterFilter
 import eu.kanade.tachiyomi.util.manga.MangaShortcutManager
-import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
 import nl.adaptivity.xmlutil.XmlDeclMode
@@ -52,7 +50,6 @@ fun appModule(app: Application) = module {
             // } else {
             //     RequerySQLiteOpenHelperFactory()
             // },
-            factory = RequerySQLiteOpenHelperFactory(),
             callback = object : AndroidSqliteDriver.Callback(Database.Schema) {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
@@ -115,8 +112,6 @@ fun appModule(app: Application) = module {
             }
         }
     }
-
-    single { JavaScriptEngine(app) }
 
     single { SourceManager(app, get()) }
     single { ExtensionManager(app) }

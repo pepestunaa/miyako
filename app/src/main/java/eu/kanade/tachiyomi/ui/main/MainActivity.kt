@@ -149,7 +149,6 @@ import yokai.domain.recents.interactor.GetRecents
 import yokai.i18n.MR
 import yokai.presentation.core.Constants
 import yokai.presentation.extension.repo.ExtensionRepoController
-import yokai.presentation.onboarding.OnboardingController
 import yokai.util.lang.getString
 import android.R as AR
 
@@ -559,9 +558,6 @@ open class MainActivity : BaseActivity<MainActivityBinding>() {
             // Set start screen
             if (!handleIntentAction(intent)) {
                 goToStartingTab()
-                if (!basePreferences.hasShownOnboarding().get()) {
-                    router.pushController(OnboardingController().withFadeInTransaction())
-                }
             }
         }
 

@@ -15,12 +15,13 @@
 -keep,allowoptimization class rx.** { public protected *; }
 -keep,allowoptimization class org.jsoup.** { public protected *; }
 -keep,allowoptimization class com.google.gson.** { public protected *; }
--keep,allowoptimization class app.cash.quickjs.** { public protected *; }
+# Injekt reads the injected type from the generic superclass of its type tokens
+-keepattributes Signature
+-keep,allowshrinking class * extends uy.kohesive.injekt.api.FullTypeReference
 -keep,allowoptimization class uy.kohesive.injekt.** { public protected *; }
 -keep,allowoptimization class org.koin.** { public protected *; }
 -keep,allowoptimization class eu.davidea.flexibleadapter.** { public protected *; }
 -keep,allowoptimization class com.squareup.zstd.** { public protected *; }
--keep class io.requery.android.database.** { public protected *; }
 
 # From extensions-lib
 -keep,allowoptimization class eu.kanade.tachiyomi.network.interceptor.RateLimitInterceptorKt { public protected *; }
@@ -33,12 +34,6 @@
 -keep class com.hippo.image.** { *; }
 -keep interface com.hippo.image.** { *; }
 -dontwarn nucleus.view.NucleusActionBarActivity
-
-# Design library
--dontwarn com.google.android.material.**
--keep class com.google.android.material.** { *; }
--keep interface com.google.android.material.** { *; }
--keep public class com.google.android.material.R$* { *; }
 
 -keepclassmembers class * implements java.io.Serializable {
     java.lang.Object writeReplace();
@@ -69,7 +64,7 @@
 ##---------------End: proguard configuration for okhttp  ----------
 
 ##---------------Begin: proguard configuration for kotlinx.serialization  ----------
--keepattributes *Annotation*, InnerClasses
+-keepattributes *Annotation*, InnerClasses, EnclosingMethod
 -dontnote kotlinx.serialization.AnnotationsKt # core serialization annotations
 
 # kotlinx-serialization-json specific. Add this if you have java.lang.NoClassDefFoundError kotlinx.serialization.json.JsonObjectSerializer
@@ -104,7 +99,3 @@
 # XmlUtil
 -keep public enum nl.adaptivity.xmlutil.EventType { *; }
 ##---------------End: proguard configuration for kotlinx.serialization  ----------
-
-# Firebase
--keep class com.google.firebase.installations.** { *; }
--keep interface com.google.firebase.installations.** { *; }

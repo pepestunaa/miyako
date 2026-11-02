@@ -1,5 +1,3 @@
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsPlugin
-import com.google.gms.googleservices.GoogleServicesPlugin
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -12,13 +10,6 @@ plugins {
     alias(kotlinx.plugins.parcelize)
     alias(libs.plugins.aboutlibraries)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.firebase.crashlytics) apply false
-    alias(libs.plugins.google.services) apply false
-}
-
-if (gradle.startParameter.taskRequests.toString().contains("standard", true)) {
-    apply<CrashlyticsPlugin>()
-    apply<GoogleServicesPlugin>()
 }
 
 fun runCommand(command: String): String {
@@ -135,7 +126,7 @@ android {
         create("standard") {
             buildConfigField("Boolean", "INCLUDE_UPDATER", "true")
             resourceConfigurations.clear()
-            resourceConfigurations.addAll(listOf("en", "in"))
+            resourceConfigurations.add("en")
             dimension = "default"
         }
         create("dev") {
@@ -177,11 +168,6 @@ dependencies {
     // Android X libraries
     implementation(androidx.bundles.androidx)
 
-    implementation(platform(libs.firebase))
-
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
-
     // ReactiveX
     implementation(libs.rxandroid)
     implementation(libs.rxjava)
@@ -193,13 +179,8 @@ dependencies {
     "nightlyImplementation"(libs.chucker.library.no.op)
     "betaImplementation"(libs.chucker.library.no.op)
 
-    implementation(kotlin("reflect", version = kotlinx.versions.kotlin.get()))
-
     // JSON
     implementation(kotlinx.bundles.serialization)
-
-    // JavaScript engine
-    implementation(libs.quickjs.android)
 
     // Disk
     implementation(libs.disklrucache)
@@ -208,7 +189,6 @@ dependencies {
     implementation(libs.jsoup)
 
     // Database
-    implementation(libs.sqlite.android)
     implementation(libs.bundles.sqlite)
 
     // Model View Presenter
@@ -221,7 +201,7 @@ dependencies {
     implementation(libs.subsamplingscaleimageview) {  // modified
         exclude(module = "image-decoder")
     }
-    implementation(libs.image.decoder)
+    implementation(libs.avif.decoder)
 
     // Sort
     implementation(libs.java.nat.sort)
@@ -234,7 +214,6 @@ dependencies {
     implementation(libs.flexible.adapter)
     implementation(libs.flexible.adapter.ui)
     implementation(libs.viewstatepageradapter)
-    implementation(libs.slice)
     implementation(libs.markwon)
 
     implementation(libs.photoview)
@@ -251,9 +230,6 @@ dependencies {
 
     implementation(platform(kotlinx.coroutines.bom))
     implementation(kotlinx.bundles.coroutines)
-
-    // TLS 1.3 support for Android < 10
-    implementation(libs.conscrypt)
 
     // Android Chart
     implementation(libs.mpandroidchart)
@@ -295,17 +271,4 @@ tasks {
         )
     }
 
-    // Duplicating Hebrew string assets due to some locale code issues on different devices
-    val copyHebrewStrings = register("copyHebrewStrings", type = Copy::class) {
-        from("./src/main/res/values-he")
-        into("./src/main/res/values-iw")
-        include("**/*")
-    }
-
-    preBuild {
-        dependsOn(
-            // formatKotlin,
-            copyHebrewStrings
-        )
-    }
 }

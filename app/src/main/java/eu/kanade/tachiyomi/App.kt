@@ -36,17 +36,17 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.allowRgb565
 import coil3.request.crossfade
 import coil3.util.DebugLogger
-import com.google.firebase.crashlytics.ktx.crashlytics
-import com.google.firebase.ktx.Firebase
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.appwidget.TachiyomiWidgetManager
 import eu.kanade.tachiyomi.core.preference.Preference
 import eu.kanade.tachiyomi.core.preference.PreferenceStore
+import eu.kanade.tachiyomi.data.coil.AvifImageDecoder
 import eu.kanade.tachiyomi.data.coil.BufferedSourceFetcher
+import eu.kanade.tachiyomi.data.coil.ChapterPageFetcher
+import eu.kanade.tachiyomi.data.coil.ChapterPageKeyer
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
 import eu.kanade.tachiyomi.data.coil.MangaKeyer
-import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -64,16 +64,13 @@ import eu.kanade.tachiyomi.util.system.localeContext
 import eu.kanade.tachiyomi.util.system.notification
 import eu.kanade.tachiyomi.util.system.setToDefault
 import eu.kanade.tachiyomi.util.system.WebViewUtil
-import java.security.Security
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import org.conscrypt.Conscrypt
 import org.koin.core.context.startKoin
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
-import yokai.core.CrashlyticsLogWriter
 import yokai.core.RollingUniFileLogWriter
 import yokai.core.di.appModule
 import yokai.core.di.domainModule
@@ -99,11 +96,6 @@ open class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.F
     override fun onCreate() {
         super<Application>.onCreate()
 
-        // TLS 1.3 support for Android 10 and below
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Security.insertProviderAt(Conscrypt.newProvider(), 1)
-        }
-
         // Avoid potential crashes
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val process = getProcessName()
@@ -123,16 +115,6 @@ open class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.F
             .onEach { enabled ->
                 // FlexibleAdapter.enableLogs(if (enabled) Level.VERBOSE else Level.SUPPRESS)
                 Logger.setToDefault(buildLogWritersToAdd(storageManager.getLogsDirectory(), enabled))
-            }
-            .launchIn(scope)
-
-        basePreferences.crashReport().changes()
-            .onEach {
-                try {
-                    Firebase.crashlytics.setCrashlyticsCollectionEnabled(it)
-                } catch (e: Exception) {
-                    // Probably already enabled/disabled
-                }
             }
             .launchIn(scope)
 
@@ -293,13 +275,15 @@ open class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.F
 
                 // NetworkFetcher.Factory
                 add(OkHttpNetworkFetcherFactory(callFactoryLazy::value))
-                // Decoder.Factory (Tachiyomi's custom decoder for JXL/AVIF)
-                add(TachiyomiImageDecoder.Factory())
+                // Decoder.Factory (libavif decoder for AVIF images)
+                add(AvifImageDecoder.Factory())
                 // Fetcher.Factory
                 add(BufferedSourceFetcher.Factory())
+                add(ChapterPageFetcher.Factory())
                 add(MangaCoverFetcher.MangaFactory(callFactoryLazy))
                 add(MangaCoverFetcher.MangaCoverFactory(callFactoryLazy))
                 // Keyer
+                add(ChapterPageKeyer())
                 add(MangaKeyer())
                 add(MangaCoverKeyer())
             }
@@ -332,9 +316,7 @@ fun buildLogWritersToAdd(logPath: UniFile?): List<LogWriter> {
 fun buildLogWritersToAdd(
     logPath: UniFile?,
     isVerbose: Boolean,
-) = buildList {
-    if (!BuildConfig.DEBUG) add(CrashlyticsLogWriter())
-
+) = buildList<LogWriter> {
  //   if (logPath != null && !BuildConfig.DEBUG) add(RollingUniFileLogWriter(logPath = logPath, isVerbose = isVerbose))
 }
 

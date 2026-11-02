@@ -1,16 +1,12 @@
 package eu.kanade.tachiyomi.ui.setting.controllers
 
 import android.content.Intent
-import android.content.res.XmlResourceParser
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.BuildConfig
-import eu.kanade.tachiyomi.R
 import yokai.i18n.MR
 import yokai.util.lang.getString
 import eu.kanade.tachiyomi.data.updater.AppDownloadInstallJob
@@ -18,7 +14,6 @@ import eu.kanade.tachiyomi.ui.setting.SettingsLegacyController
 import eu.kanade.tachiyomi.ui.setting.ThemePreference
 import eu.kanade.tachiyomi.ui.setting.bindTo
 import eu.kanade.tachiyomi.ui.setting.defaultValue
-import eu.kanade.tachiyomi.ui.setting.infoPreference
 import eu.kanade.tachiyomi.ui.setting.intListPreference
 import eu.kanade.tachiyomi.ui.setting.listPreference
 import eu.kanade.tachiyomi.ui.setting.onChange
@@ -28,10 +23,7 @@ import eu.kanade.tachiyomi.ui.setting.preferenceCategory
 import eu.kanade.tachiyomi.ui.setting.summaryMRes as summaryRes
 import eu.kanade.tachiyomi.ui.setting.switchPreference
 import eu.kanade.tachiyomi.ui.setting.titleMRes as titleRes
-import eu.kanade.tachiyomi.util.lang.addBetaTag
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
-import eu.kanade.tachiyomi.util.system.LocaleHelper
-import eu.kanade.tachiyomi.util.system.systemLangContext
 import yokai.domain.base.BasePreferences
 import java.util.*
 import eu.kanade.tachiyomi.data.preference.PreferenceKeys as Keys
@@ -157,68 +149,6 @@ class SettingsGeneralController : SettingsLegacyController() {
                 }
                 defaultValue = ""
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                listPreference(activity) {
-                    bindTo(preferences.appLanguage())
-                    isPersistent = false
-                    title = context.getString(MR.strings.language).let {
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                            it.addBetaTag(context)
-                        } else {
-                            it
-                        }
-                    }
-                    dialogTitleRes = MR.strings.language
-
-                    val langs = mutableListOf<Language>()
-                    val parser = context.resources.getXml(R.xml.locales_config)
-                    var eventType = parser.eventType
-                    while (eventType != XmlResourceParser.END_DOCUMENT) {
-                        if (eventType == XmlResourceParser.START_TAG && parser.name == "locale") {
-                            for (i in 0..<parser.attributeCount) {
-                                if (parser.getAttributeName(i) == "name") {
-                                    val langTag = parser.getAttributeValue(i)
-                                    val displayName = LocaleHelper.getLocalizedDisplayName(langTag)
-                                    if (displayName.isNotEmpty()) {
-                                        langs.add(Language(langTag, displayName, LocaleHelper.getDisplayName(langTag)))
-                                    }
-                                }
-                            }
-                        }
-                        eventType = parser.next()
-                    }
-
-                    langs.sortBy { it.localizedDisplayName }
-                    langs.add(0, Language("", context.systemLangContext.getString(MR.strings.system_default), null))
-
-                    entries = langs.map { it.localizedDisplayName }
-                    entryValues = langs.map { it.tag }
-                    defaultValue = ""
-
-                    val locale = AppCompatDelegate.getApplicationLocales().get(0)?.toLanguageTag()
-                    if (locale != null) {
-                        langs.find { it.tag == locale }?.let { tempValue = langs.indexOf(it) }
-                    }
-
-                    onChange {
-                        val value = it as String
-                        val appLocale: LocaleListCompat = if (value.isBlank()) {
-                            preferences.appLanguage().delete()
-                            LocaleListCompat.getEmptyLocaleList()
-                        } else {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                                preferences.appLanguage().set(value)
-                            }
-                            LocaleListCompat.forLanguageTags(value)
-                        }
-                        AppCompatDelegate.setApplicationLocales(appLocale)
-                        true
-                    }
-                }
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    infoPreference(MR.strings.language_requires_app_restart)
-                }
-            }
         }
 
         preferenceCategory {
@@ -262,10 +192,4 @@ class SettingsGeneralController : SettingsLegacyController() {
         themePreference?.lastScrollPostionLight = lastThemeXLight
         themePreference?.lastScrollPostionDark = lastThemeXDark
     }
-
-    data class Language(
-        val tag: String,
-        val localizedDisplayName: String,
-        val displayName: String?,
-    )
 }
