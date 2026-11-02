@@ -24,6 +24,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.TextView
@@ -232,6 +234,7 @@ class MangaDetailsController :
     private var pageGridEnabled = false
     private var recyclerScrolling = false
     private var blockLayoutSwipe = false
+    private var swipeAnimating = false
 
     private var actionMode: ActionMode? = null
 
@@ -605,31 +608,40 @@ class MangaDetailsController :
     private fun setupLayoutSwipe(recycler: RecyclerView) {
         val minDistance = MIN_SWIPE_DISTANCE_DP.dpToPx
         val touchSlop = ViewConfiguration.get(recycler.context).scaledTouchSlop
-        var downX = 0f
-        var downY = 0f
+        var downRawX = 0f
+        var downRawY = 0f
         var horizontalSwipe = false
+        swipeAnimating = false
 
         recycler.addOnItemTouchListener(
             object : RecyclerView.SimpleOnItemTouchListener() {
                 override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    if (swipeAnimating) return true
                     when (e.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
-                            downX = e.x
-                            downY = e.y
+                            rv.animate().cancel()
+                            rv.translationX = 0f
+                            downRawX = e.rawX
+                            downRawY = e.rawY
                             horizontalSwipe = false
                             blockLayoutSwipe = startsOnSwipeableChapter(rv, e)
                         }
                         MotionEvent.ACTION_MOVE -> {
+                            val dx = e.rawX - downRawX
+                            val dy = e.rawY - downRawY
                             if (!horizontalSwipe &&
                                 !blockLayoutSwipe &&
                                 !isTablet &&
-                                manga?.isLocal() != true
+                                manga?.isLocal() != true &&
+                                abs(dx) > touchSlop &&
+                                abs(dx) > abs(dy) * 1.5f
                             ) {
-                                val dx = e.x - downX
-                                val dy = e.y - downY
-                                if (abs(dx) > touchSlop && abs(dx) > abs(dy) * 1.5f) {
-                                    horizontalSwipe = true
-                                }
+                                horizontalSwipe = true
+                            }
+                            if (horizontalSwipe) {
+                                // The recycler moves with the finger, so raw coordinates keep the
+                                // translation stable instead of feeding the view's own offset back in.
+                                rv.translationX = dx * swipeFollowFactor(dx)
                             }
                         }
                     }
@@ -638,21 +650,72 @@ class MangaDetailsController :
                 }
 
                 override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
+                    if (swipeAnimating) return
                     when (e.actionMasked) {
+                        MotionEvent.ACTION_MOVE -> {
+                            if (horizontalSwipe) {
+                                val dx = e.rawX - downRawX
+                                rv.translationX = dx * swipeFollowFactor(dx)
+                            }
+                        }
                         MotionEvent.ACTION_UP -> {
-                            val dx = e.x - downX
-                            if (horizontalSwipe && abs(dx) > minDistance) {
-                                // Match the tab order: swipe right opens Pages, swipe left returns
-                                // to Chapters. Swipes past the first/last view stay put.
-                                setChapterLayout(dx > 0)
+                            if (horizontalSwipe) {
+                                finishLayoutSwipe(rv, e.rawX - downRawX, minDistance)
                             }
                             horizontalSwipe = false
                         }
-                        MotionEvent.ACTION_CANCEL -> horizontalSwipe = false
+                        MotionEvent.ACTION_CANCEL -> {
+                            if (horizontalSwipe) settleLayoutSwipe(rv)
+                            horizontalSwipe = false
+                        }
                     }
                 }
             },
         )
+    }
+
+    private fun swipeFollowFactor(dx: Float): Float =
+        // Past the first or last view the swipe only drags a little, hinting there is nothing there.
+        if ((dx > 0) == (adapter?.pageGridMode == true)) EDGE_SWIPE_FOLLOW else 1f
+
+    private fun settleLayoutSwipe(recycler: RecyclerView) {
+        recycler.animate()
+            .translationX(0f)
+            .setDuration(SWIPE_SETTLE_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    private fun finishLayoutSwipe(recycler: RecyclerView, dx: Float, minDistance: Int) {
+        // Match the tab order: swipe right opens Pages, swipe left returns to Chapters.
+        val usePageGrid = dx > 0
+        if (abs(dx) < minDistance || adapter?.pageGridMode == usePageGrid) {
+            settleLayoutSwipe(recycler)
+            return
+        }
+        animatePageSwitch(recycler, usePageGrid, if (dx > 0) 1f else -1f)
+    }
+
+    private fun animatePageSwitch(recycler: RecyclerView, usePageGrid: Boolean, direction: Float) {
+        // Slide the current page out in the gesture direction, swap it off screen,
+        // then bring the new page in from the opposite edge following the same motion.
+        swipeAnimating = true
+        val width = recycler.width.toFloat().coerceAtLeast(1f)
+        recycler.animate()
+            .translationX(direction * width)
+            .setDuration(SWIPE_OUT_MS)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                setChapterLayout(usePageGrid)
+                recycler.translationX = -direction * width
+                recycler.animate()
+                    .translationX(0f)
+                    .setDuration(SWIPE_IN_MS)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction { swipeAnimating = false }
+                    .start()
+            }
+            .start()
     }
 
     private fun startsOnSwipeableChapter(recycler: RecyclerView, event: MotionEvent): Boolean {
@@ -2187,6 +2250,10 @@ class MangaDetailsController :
         private const val DEFAULT_GRID_SPAN_COUNT = 3
 
         private const val MIN_SWIPE_DISTANCE_DP = 48
+        private const val EDGE_SWIPE_FOLLOW = 0.2f
+        private const val SWIPE_SETTLE_MS = 160L
+        private const val SWIPE_OUT_MS = 170L
+        private const val SWIPE_IN_MS = 190L
 
         private enum class RangeMode {
             Download,
