@@ -22,6 +22,8 @@ import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil
 import eu.kanade.tachiyomi.util.system.isLTR
+import eu.kanade.tachiyomi.util.system.withUIContext
+import kotlinx.coroutines.launch
 import uy.kohesive.injekt.injectLazy
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -41,9 +43,12 @@ class MangaDetailsAdapter(
     var pageGridMode = false
         private set
 
+    var suppressPageLoads = false
+
     private val pageSections = HashMap<Long, ChapterPagesSectionItem>()
     private val chapterPages = HashMap<Long, List<Page>>()
     private var currentPage: Pair<Long, Int>? = null
+    private var pendingScrollToCurrent = false
 
     val delegate: MangaDetailsInterface = controller
     val presenter = controller.presenter
@@ -119,6 +124,98 @@ class MangaDetailsAdapter(
         section.state = ChapterPagesSectionItem.State.Idle
     }
 
+    fun onPageSectionBound(section: ChapterPagesSectionItem) {
+        if (!pageGridMode || suppressPageLoads) return
+        // Attaching pages mutates the layout, which shifts the viewport mid-scroll.
+        if (isScrolling) return
+        attachCachedPages(section)
+        if (!pageSectionShouldLoad(section)) return
+        markPageSectionLoading(section)
+        loadSectionPages(section)
+    }
+
+    fun retryPageSection(section: ChapterPagesSectionItem) {
+        if (!pageGridMode) return
+        resetPageSection(section)
+        markPageSectionLoading(section)
+        loadSectionPages(section)
+    }
+
+    fun loadVisiblePageSections() {
+        if (!pageGridMode) return
+        val recycler = recyclerView ?: return
+        for (i in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(i) ?: continue
+            val position = recycler.getChildAdapterPosition(child)
+            if (position == RecyclerView.NO_POSITION) continue
+            (getItem(position) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
+        }
+    }
+
+    fun scrollToCurrentPage() {
+        if (!pageGridMode) return
+        val recycler = recyclerView ?: return
+        refreshCurrentPage()
+        val chapterId = currentPage?.first
+        if (chapterId == null) {
+            pendingScrollToCurrent = false
+            recycler.scrollToPosition(0)
+            return
+        }
+        pendingScrollToCurrent = true
+        val pagePosition = currentPagePosition()
+        if (pagePosition != null) {
+            pendingScrollToCurrent = false
+            recycler.scrollToPosition(pagePosition)
+            return
+        }
+        // The current chapter's thumbnails may not be loaded yet: park on its section and
+        // jump to the page itself once they attach.
+        sectionPositionOf(chapterId)?.let { position ->
+            recycler.scrollToPosition(position)
+            (getItem(position) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
+        }
+    }
+
+    fun cancelPendingScroll() {
+        pendingScrollToCurrent = false
+    }
+
+    private fun currentPagePosition(): Int? {
+        for (i in 0 until itemCount) {
+            val item = getItem(i) as? ChapterPageItem ?: continue
+            if (item.isCurrentPage) return i
+        }
+        return null
+    }
+
+    private fun sectionPositionOf(chapterId: Long): Int? {
+        for (i in 0 until itemCount) {
+            val item = getItem(i) as? ChapterPagesSectionItem ?: continue
+            if (item.chapter.id == chapterId) return i
+        }
+        return null
+    }
+
+    private fun maybeScrollToCurrentPage(chapterId: Long) {
+        if (!pendingScrollToCurrent || currentPage?.first != chapterId) return
+        val position = currentPagePosition() ?: return
+        pendingScrollToCurrent = false
+        recyclerView?.scrollToPosition(position)
+    }
+
+    private fun loadSectionPages(section: ChapterPagesSectionItem) {
+        presenter.presenterScope.launch {
+            val pages = presenter.loadPageList(section.chapter)
+            withUIContext {
+                onPagesLoaded(section, pages, attachItems = !isScrolling)
+            }
+        }
+    }
+
+    val isScrolling: Boolean
+        get() = recyclerView?.scrollState != RecyclerView.SCROLL_STATE_IDLE
+
     fun onPagesLoaded(
         section: ChapterPagesSectionItem,
         pages: List<Page>?,
@@ -143,7 +240,9 @@ class MangaDetailsAdapter(
             attachItems -> {
                 insertPageItems(section, sectionPosition, pages)
                 section.pagesAttached = true
-            }            // Held back while scrolling; attachCachedPages() inserts them when the scroll settles.
+                maybeScrollToCurrentPage(chapterId)
+            }
+            // Held back while scrolling; attachCachedPages() inserts them when the scroll settles.
             else -> section.pagesAttached = false
         }
         section.refreshBoundHolder()
@@ -160,7 +259,7 @@ class MangaDetailsAdapter(
         val recycler = recyclerView
         if (recycler != null && recycler.isComputingLayout) {
             recycler.post {
-                if (!controller.isListScrolling()) attachCachedPages(section)
+                if (!isScrolling) attachCachedPages(section)
             }
             return
         }
@@ -168,6 +267,7 @@ class MangaDetailsAdapter(
         if (sectionPosition != -1) {
             insertPageItems(section, sectionPosition, pages)
             section.pagesAttached = true
+            maybeScrollToCurrentPage(chapterId)
         }
     }
 
@@ -349,7 +449,6 @@ class MangaDetailsAdapter(
         fun topCoverHeight(): Int
         fun showFloatingActionMode(view: TextView, content: String? = null, isTag: Boolean = false)
         fun showChapterFilter()
-        fun setChapterLayout(usePageGrid: Boolean)
         fun favoriteManga(longPress: Boolean)
         fun copyContentToClipboard(content: String, label: StringResource, useToast: Boolean = false)
         fun copyContentToClipboard(content: String, label: Int, useToast: Boolean = false)

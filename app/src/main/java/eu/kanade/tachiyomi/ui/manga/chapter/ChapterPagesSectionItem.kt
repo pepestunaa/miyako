@@ -39,7 +39,7 @@ class ChapterPagesSectionItem(var chapter: Chapter) : AbstractFlexibleItem<Chapt
     ) {
         boundHolder = holder
         holder.bind(this)
-        (adapter as MangaDetailsAdapter).controller.onPageSectionBound(this)
+        (adapter as MangaDetailsAdapter).onPageSectionBound(this)
     }
 
     override fun unbindViewHolder(

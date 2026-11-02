@@ -24,6 +24,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.VelocityTracker
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
@@ -41,7 +42,6 @@ import androidx.core.net.toFile
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsCompat.Type.systemBars
-import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
@@ -94,7 +94,6 @@ import eu.kanade.tachiyomi.ui.main.SearchActivity
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChaptersSortBottomSheet
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
 import eu.kanade.tachiyomi.ui.manga.track.TrackingBottomSheet
@@ -153,6 +152,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -230,11 +230,12 @@ class MangaDetailsController :
 
     private var query = ""
     private var adapter: MangaDetailsAdapter? = null
+    private var previewAdapter: MangaDetailsAdapter? = null
     private var gridSpanResolver: GridSpanResolver? = null
-    private var pageGridEnabled = false
-    private var recyclerScrolling = false
-    private var blockLayoutSwipe = false
+    private var previewOpen = false
     private var swipeAnimating = false
+    private var hintScheduled = false
+    private var hintAnimating = false
 
     private var actionMode: ActionMode? = null
 
@@ -287,28 +288,7 @@ class MangaDetailsController :
                     dy < 0 && !binding.fab.isExtended -> binding.fab.extend()
                 }
 
-                val headerBinding = getHeader()?.binding
-                if (headerBinding == null) {
-                    if (binding.fab.isEnabled) {
-                        binding.fab.show()
-                    } else {
-                        binding.fab.isVisible = false
-                    }
-                    return
-                }
-
-                if (!headerBinding.startReadingButton.isVisible || !headerBinding.startReadingButton.isEnabled) {
-                    binding.fab.isVisible = false
-                    return
-                }
-
-                val bound = Rect()
-                binding.recycler.getHitRect(bound)
-                if (headerBinding.startReadingButton.getLocalVisibleRect(bound)) {
-                    binding.fab.hide()
-                } else {
-                    binding.fab.show()
-                }
+                updateFabVisibility()
             }
         })
         binding.fab.transitionName = "details start reading transition"
@@ -504,6 +484,11 @@ class MangaDetailsController :
     override fun onDestroyView(view: View) {
         snack?.dismiss()
         adapter = null
+        previewAdapter = null
+        previewOpen = false
+        swipeAnimating = false
+        hintScheduled = false
+        hintAnimating = false
         gridSpanResolver = null
         finishFloatingActionMode()
         trackingBottomSheet = null
@@ -514,7 +499,6 @@ class MangaDetailsController :
     @SuppressLint("ClickableViewAccessibility")
     private fun setRecycler(view: View) {
         adapter = MangaDetailsAdapter(this)
-        adapter?.setPageGridMode(isPageGridEnabled())
         gridSpanResolver = GridSpanResolver(view.resources).also {
             binding.recycler.addOnLayoutChangeListener(it)
         }
@@ -531,12 +515,12 @@ class MangaDetailsController :
             adapter ?: return,
             gridSpanResolver?.spanCount ?: DEFAULT_GRID_SPAN_COUNT,
         )
-        binding.recycler.addItemDecoration(
-            MangaDetailsDivider(view.context) { adapter?.pageGridMode != true },
-        )
+        binding.recycler.addItemDecoration(MangaDetailsDivider(view.context))
         binding.recycler.setHasFixedSize(true)
         binding.recycler.setItemViewCacheSize(12)
-        setupLayoutSwipe(binding.recycler)
+        setupPreviewPanel()
+        setupPanelSwipe(binding.recycler, opensPanel = true)
+        setupPanelSwipe(binding.pagesPreviewRecycler, opensPanel = false)
         val appbarHeight = activityBinding?.appBar?.attrToolbarHeight ?: 0
         val offset = 10.dpToPx
         binding.swipeRefresh.setDistanceToTriggerSync(70.dpToPx)
@@ -574,14 +558,9 @@ class MangaDetailsController :
                 }
 
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    val wasScrolling = recyclerScrolling
-                    recyclerScrolling = newState != RecyclerView.SCROLL_STATE_IDLE
                     val atTop = !recyclerView.canScrollVertically(-1)
                     updateToolbarTitleAlpha()
                     if (atTop) getHeader()?.binding?.backdrop?.translationY = 0f
-                    if (wasScrolling && newState == RecyclerView.SCROLL_STATE_IDLE) {
-                        loadVisiblePageSections()
-                    }
                 }
             },
         )
@@ -600,105 +579,189 @@ class MangaDetailsController :
         }
     }
 
-    private fun isPageGridEnabled(): Boolean =
-        !isTablet &&
-            pageGridEnabled &&
-            manga?.isLocal() != true
+    private fun setupPreviewPanel() {
+        val adapter = MangaDetailsAdapter(this).apply {
+            setPageGridMode(true)
+            addListener(
+                object : FlexibleAdapter.OnItemClickListener, FlexibleAdapter.OnItemLongClickListener {
+                    override fun onItemClick(view: View?, position: Int): Boolean {
+                        val item = getItem(position) as? ChapterPageItem ?: return false
+                        openChapter(item.chapter, page = item.page.index)
+                        return false
+                    }
 
-    private fun setupLayoutSwipe(recycler: RecyclerView) {
-        val minDistance = MIN_SWIPE_DISTANCE_DP.dpToPx
+                    override fun onItemLongClick(position: Int) = Unit
+                },
+            )
+            setChapters(presenter.chapters)
+        }
+        previewAdapter = adapter
+        val recycler = binding.pagesPreviewRecycler
+        recycler.adapter = adapter
+        recycler.layoutManager = ChapterLayoutManager(
+            recycler.context,
+            adapter,
+            gridSpanResolver?.spanCount ?: DEFAULT_GRID_SPAN_COUNT,
+        )
+        recycler.setHasFixedSize(true)
+        recycler.itemAnimator = null
+        recycler.addOnScrollListener(
+            object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) adapter.loadVisiblePageSections()
+                }
+            },
+        )
+    }
+
+    private fun setupPanelSwipe(recycler: RecyclerView, opensPanel: Boolean) {
         val touchSlop = ViewConfiguration.get(recycler.context).scaledTouchSlop
+        val velocityTracker = VelocityTracker.obtain()
         var downRawX = 0f
         var downRawY = 0f
         var lastRawX = 0f
         var lastRawY = 0f
-        var horizontalSwipe = false
+        var dragging = false
+        var blockSwipe = false
+        var dragStartTranslation = 0f
+        var dragWidth = 1f
         // Another touch listener can hold the start of a gesture (a row snapping back, for
         // example) and then this listener never sees its DOWN, so the first move re-anchors.
         var anchored = false
-        swipeAnimating = false
 
-        fun anchor(recycler: RecyclerView, e: MotionEvent) {
+        fun panelAvailable(): Boolean = if (opensPanel) !previewOpen else previewOpen
+
+        fun anchor(e: MotionEvent) {
+            if (hintAnimating) {
+                hintAnimating = false
+                previewAdapter?.suppressPageLoads = false
+                binding.pagesPreviewRecycler.animate().cancel()
+                if (!previewOpen) {
+                    binding.pagesPreviewRecycler.visibility = View.GONE
+                    binding.pagesPreviewRecycler.translationX = 0f
+                }
+            }
             downRawX = e.rawX
             downRawY = e.rawY
             lastRawX = e.rawX
             lastRawY = e.rawY
-            horizontalSwipe = false
-            blockLayoutSwipe = startsOnSwipeableChapter(recycler, e)
+            dragging = false
+            blockSwipe = opensPanel && startsOnSwipeableChapter(recycler, e)
+            velocityTracker.clear()
+            velocityTracker.addMovement(e)
             anchored = true
+        }
+
+        fun moveDrag(e: MotionEvent) {
+            val dx = e.rawX - downRawX
+            binding.pagesPreviewRecycler.translationX =
+                (dragStartTranslation + dx).coerceIn(0f, dragWidth)
+        }
+
+        fun beginDrag(e: MotionEvent): Boolean {
+            if (opensPanel) {
+                val width = binding.recycler.width
+                if (width <= 0) return false
+                // The panel stays GONE while closed, so show it already parked off-screen right.
+                binding.pagesPreviewRecycler.visibility = View.VISIBLE
+                dragStartTranslation = width.toFloat()
+                dragWidth = width.toFloat()
+            } else {
+                dragStartTranslation = 0f
+                dragWidth = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
+            }
+            binding.pagesPreviewRecycler.translationX = dragStartTranslation
+            moveDrag(e)
+            return true
+        }
+
+        fun finishDrag() {
+            velocityTracker.computeCurrentVelocity(1000)
+            val velocityX = velocityTracker.xVelocity
+            val translation = binding.pagesPreviewRecycler.translationX
+            val complete = if (opensPanel) {
+                translation < dragWidth - dragWidth * PANEL_SWIPE_THRESHOLD ||
+                    velocityX < -PANEL_FLING_VELOCITY
+            } else {
+                translation > dragWidth * PANEL_SWIPE_THRESHOLD ||
+                    velocityX > PANEL_FLING_VELOCITY
+            }
+            val opened = complete == opensPanel
+            animatePreviewPanel(if (opened) 0f else dragWidth) {
+                if (opened) onPreviewOpened() else onPreviewClosed()
+            }
+        }
+
+        fun cancelDrag() {
+            val returnClosed = opensPanel
+            animatePreviewPanel(if (returnClosed) dragWidth else 0f) {
+                if (returnClosed) onPreviewClosed() else onPreviewOpened()
+            }
         }
 
         recycler.addOnItemTouchListener(
             object : RecyclerView.SimpleOnItemTouchListener() {
                 override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                    if (swipeAnimating) return true
+                    if (swipeAnimating) return false
                     when (e.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            rv.animate().cancel()
-                            rv.translationX = 0f
-                            anchor(rv, e)
-                        }
+                        MotionEvent.ACTION_DOWN -> anchor(e)
                         MotionEvent.ACTION_MOVE -> {
                             if (!anchored) {
-                                anchor(rv, e)
+                                anchor(e)
                                 return false
                             }
+                            velocityTracker.addMovement(e)
                             val dx = e.rawX - downRawX
                             val dy = e.rawY - downRawY
                             // Judge by the latest movement too: a stale anchor must not turn a
-                            // vertical drag into a page switch.
+                            // vertical drag into a panel swipe.
                             val stepX = e.rawX - lastRawX
                             val stepY = e.rawY - lastRawY
-                            if (!horizontalSwipe &&
-                                !blockLayoutSwipe &&
+                            if (!dragging &&
+                                !blockSwipe &&
                                 !isTablet &&
                                 manga?.isLocal() != true &&
+                                panelAvailable() &&
+                                (if (opensPanel) dx < 0f else dx > 0f) &&
                                 abs(dx) > touchSlop &&
                                 abs(dx) > abs(dy) * 1.5f &&
                                 abs(stepX) > abs(stepY) * 1.5f
                             ) {
-                                horizontalSwipe = true
-                            }
-                            if (horizontalSwipe) {
-                                // The recycler moves with the finger, so raw coordinates keep the
-                                // translation stable instead of feeding the view's own offset back in.
-                                rv.translationX = dx * swipeFollowFactor(dx)
+                                dragging = beginDrag(e)
+                            } else if (dragging) {
+                                moveDrag(e)
                             }
                             lastRawX = e.rawX
                             lastRawY = e.rawY
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            horizontalSwipe = false
+                            dragging = false
                             anchored = false
                         }
                     }
                     // Intercepting cancels the child press so a swipe doesn't also click the row/button under it.
-                    return horizontalSwipe
+                    return dragging
                 }
 
                 override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                    if (swipeAnimating) return
                     when (e.actionMasked) {
                         MotionEvent.ACTION_MOVE -> {
+                            if (swipeAnimating) return
                             if (!anchored) {
-                                anchor(rv, e)
+                                anchor(e)
                                 return
                             }
-                            if (horizontalSwipe) {
-                                val dx = e.rawX - downRawX
-                                rv.translationX = dx * swipeFollowFactor(dx)
-                            }
+                            velocityTracker.addMovement(e)
+                            if (dragging) moveDrag(e)
                         }
                         MotionEvent.ACTION_UP -> {
-                            if (horizontalSwipe) {
-                                finishLayoutSwipe(rv, e.rawX - downRawX, minDistance)
-                            }
-                            horizontalSwipe = false
+                            if (dragging) finishDrag()
+                            dragging = false
                             anchored = false
                         }
                         MotionEvent.ACTION_CANCEL -> {
-                            if (horizontalSwipe) settleLayoutSwipe(rv)
-                            horizontalSwipe = false
+                            if (dragging) cancelDrag()
+                            dragging = false
                             anchored = false
                         }
                     }
@@ -707,55 +770,97 @@ class MangaDetailsController :
         )
     }
 
-    private fun swipeFollowFactor(dx: Float): Float =
-        // Past the first or last view the swipe only drags a little, hinting there is nothing there.
-        if ((dx > 0) == (adapter?.pageGridMode == true)) EDGE_SWIPE_FOLLOW else 1f
+    private fun scheduleSwipeHint() {
+        if (hintScheduled || isTablet) return
+        if (presenter.preferences.hasShownDetailSwipeHint().get()) return
+        val view = view ?: return
+        hintScheduled = true
+        view.postDelayed({ showSwipeHint() }, PANEL_HINT_DELAY_MS)
+    }
 
-    private fun settleLayoutSwipe(recycler: RecyclerView) {
-        recycler.animate()
-            .translationX(0f)
-            .setDuration(SWIPE_SETTLE_MS)
+    private fun showSwipeHint() {
+        if (view == null) return
+        if (presenter.preferences.hasShownDetailSwipeHint().get()) return
+        val manga = manga ?: return
+        if (isTablet || manga.isLocal() || previewOpen || swipeAnimating || hintAnimating) return
+        val panel = binding.pagesPreviewRecycler
+        if (panel.visibility != View.GONE) return
+        val adapter = previewAdapter ?: return
+        val width = binding.recycler.width.toFloat()
+        if (width <= 0f || adapter.itemCount == 0) return
+        presenter.preferences.hasShownDetailSwipeHint().set(true)
+        // Nudge the right-docked panel into view and back so the swipe affordance is obvious.
+        hintAnimating = true
+        adapter.suppressPageLoads = true
+        panel.visibility = View.VISIBLE
+        panel.translationX = width
+        panel.animate().cancel()
+        panel.animate()
+            .translationX(width * (1f - PANEL_HINT_PEEK))
+            .setDuration(PANEL_HINT_IN_MS)
             .setInterpolator(DecelerateInterpolator())
-            .start()
-    }
-
-    private fun finishLayoutSwipe(recycler: RecyclerView, dx: Float, minDistance: Int) {
-        // Match the tab order: swipe right opens Pages, swipe left returns to Chapters.
-        val usePageGrid = dx > 0
-        if (abs(dx) < minDistance || adapter?.pageGridMode == usePageGrid) {
-            settleLayoutSwipe(recycler)
-            return
-        }
-        animatePageSwitch(recycler, usePageGrid, if (dx > 0) 1f else -1f)
-    }
-
-    private fun animatePageSwitch(recycler: RecyclerView, usePageGrid: Boolean, direction: Float) {
-        // Slide the current page out in the gesture direction, swap it off screen,
-        // then bring the new page in from the opposite edge following the same motion.
-        swipeAnimating = true
-        val width = recycler.width.toFloat().coerceAtLeast(1f)
-        recycler.animate()
-            .translationX(direction * width)
-            .setDuration(SWIPE_OUT_MS)
-            .setInterpolator(AccelerateInterpolator())
             .withEndAction {
-                setChapterLayout(usePageGrid)
-                recycler.translationX = -direction * width
-                recycler.animate()
-                    .translationX(0f)
-                    .setDuration(SWIPE_IN_MS)
-                    .setInterpolator(DecelerateInterpolator())
-                    .withEndAction { swipeAnimating = false }
+                if (!hintAnimating || previewOpen) return@withEndAction
+                panel.animate()
+                    .translationX(width)
+                    .setStartDelay(PANEL_HINT_HOLD_MS)
+                    .setDuration(PANEL_HINT_OUT_MS)
+                    .setInterpolator(AccelerateInterpolator())
+                    .withEndAction {
+                        hintAnimating = false
+                        adapter.suppressPageLoads = false
+                        if (!previewOpen) panel.visibility = View.GONE
+                    }
                     .start()
             }
             .start()
     }
 
+    private fun animatePreviewPanel(target: Float, onEnd: () -> Unit) {
+        val panel = binding.pagesPreviewRecycler
+        swipeAnimating = true
+        val width = binding.recycler.width.toFloat().coerceAtLeast(1f)
+        val distance = abs(target - panel.translationX)
+        val duration = (PANEL_ANIM_MS * (distance / width))
+            .roundToLong()
+            .coerceIn(PANEL_ANIM_MIN_MS, PANEL_ANIM_MS)
+        panel.animate().cancel()
+        panel.animate()
+            .translationX(target)
+            .setDuration(duration)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                swipeAnimating = false
+                onEnd()
+            }
+            .start()
+    }
+
+    private fun onPreviewOpened() {
+        previewOpen = true
+        if (!presenter.preferences.hasShownDetailSwipeHint().get()) {
+            presenter.preferences.hasShownDetailSwipeHint().set(true)
+        }
+        previewAdapter?.scrollToCurrentPage()
+        binding.fab.hide()
+        binding.fastScroller.isVisible = false
+        binding.swipeRefresh.isEnabled = false
+    }
+
+    private fun onPreviewClosed() {
+        previewOpen = false
+        previewAdapter?.cancelPendingScroll()
+        binding.pagesPreviewRecycler.visibility = View.GONE
+        binding.swipeRefresh.isEnabled = true
+        binding.fastScroller.isVisible = true
+        updateFab()
+        if (binding.fab.isEnabled) updateFabVisibility()
+    }
+
     private fun startsOnSwipeableChapter(recycler: RecyclerView, event: MotionEvent): Boolean {
         // Chapter rows already handle horizontal swipes (bookmark/read), so leave those to the helper.
-        // Rows that can't be swiped don't block the layout swipe, otherwise the gesture would be dead.
+        // Rows that can't be swiped don't block the panel swipe, otherwise the gesture would be dead.
         val adapter = adapter ?: return false
-        if (adapter.pageGridMode) return false
         val child = recycler.findChildViewUnder(event.x, event.y) ?: return false
         val position = recycler.getChildAdapterPosition(child)
         if (position == RecyclerView.NO_POSITION) return false
@@ -771,110 +876,12 @@ class MangaDetailsController :
         ): Int {
             val position = recyclerView.getChildAdapterPosition(viewHolder.itemView)
             val swipeable = viewHolder is ChapterHolder &&
-                !detailsAdapter.pageGridMode &&
                 position != RecyclerView.NO_POSITION &&
                 detailsAdapter.getItem(position)?.isSwipeable() == true
             return ItemTouchHelper.Callback.makeMovementFlags(
                 0,
                 if (swipeable) ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT else 0,
             )
-        }
-    }
-
-    private fun loadVisiblePageSections() {
-        val adapter = adapter ?: return
-        if (!adapter.pageGridMode) return
-        val recycler = binding.recycler
-        for (i in 0 until recycler.childCount) {
-            val child = recycler.getChildAt(i) ?: continue
-            val position = recycler.getChildAdapterPosition(child)
-            if (position == RecyclerView.NO_POSITION) continue
-            val item = adapter.getItem(position)
-            if (item is ChapterPagesSectionItem) onPageSectionBound(item)
-        }
-    }
-
-    override fun setChapterLayout(usePageGrid: Boolean) {
-        val adapter = adapter ?: return
-        if (isTablet) return
-        if (adapter.pageGridMode == usePageGrid) return
-        if (usePageGrid && manga?.isLocal() == true) return
-
-        val recycler = binding.recycler
-        recycler.stopScroll()
-        val layoutManager = recycler.layoutManager as? LinearLayoutManager
-        val anchorPosition = layoutManager?.findFirstVisibleItemPosition()
-            ?: RecyclerView.NO_POSITION
-        var anchorChapterId: Long? = null
-        var anchorOffset = 0
-        var anchoredOnHeader = false
-        if (anchorPosition != RecyclerView.NO_POSITION) {
-            val anchorView = layoutManager?.findViewByPosition(anchorPosition)
-            anchorOffset = (anchorView?.top ?: 0) - recycler.paddingTop
-            when (val item = adapter.getItem(anchorPosition)) {
-                is ChapterItem -> anchorChapterId = item.chapter.id
-                is ChapterPagesSectionItem -> anchorChapterId = item.chapter.id
-                is ChapterPageItem -> anchorChapterId = item.chapter.id
-                else -> anchoredOnHeader = anchorPosition == 0
-            }
-        }
-
-        // The recycler keeps a single layout manager, so only span sizes and item bindings change.
-        // Animations are muted for the swap so old rows never cross-fade with the new layout.
-        val itemAnimator = recycler.itemAnimator
-        recycler.itemAnimator = null
-        recycler.suppressLayout(true)
-        try {
-            pageGridEnabled = usePageGrid
-            adapter.setPageGridMode(usePageGrid)
-            (recycler.layoutManager as? ChapterLayoutManager)?.updateLayoutMode()
-            recycler.invalidateItemDecorations()
-
-            // Keep the same chapter at the same on-screen offset instead of jumping to the top.
-            val targetPosition = if (anchoredOnHeader) {
-                0
-            } else {
-                anchorChapterId?.let { adapter.findPositionForChapter(it) }
-                    ?: RecyclerView.NO_POSITION
-            }
-            if (targetPosition != RecyclerView.NO_POSITION) {
-                layoutManager?.scrollToPositionWithOffset(targetPosition, anchorOffset)
-            }
-        } finally {
-            recycler.suppressLayout(false)
-            // Animations attach on the deferred layout, so only re-enable them after it ran.
-            recycler.doOnNextLayout { recycler.itemAnimator = itemAnimator }
-        }
-    }
-
-    fun onPageSectionBound(section: ChapterPagesSectionItem) {
-        val adapter = adapter ?: return
-        if (!adapter.pageGridMode) return
-        // Attaching pages mutates the layout, which shifts the viewport mid-scroll.
-        if (recyclerScrolling) return
-        adapter.attachCachedPages(section)
-        if (!adapter.pageSectionShouldLoad(section)) return
-        adapter.markPageSectionLoading(section)
-        loadSectionPages(section)
-    }
-
-    fun isListScrolling(): Boolean = recyclerScrolling
-
-    fun retryPageSection(section: ChapterPagesSectionItem) {
-        val adapter = adapter ?: return
-        if (!adapter.pageGridMode) return
-        adapter.resetPageSection(section)
-        adapter.markPageSectionLoading(section)
-        loadSectionPages(section)
-    }
-
-    private fun loadSectionPages(section: ChapterPagesSectionItem) {
-        presenter.presenterScope.launch {
-            val pages = presenter.loadPageList(section.chapter)
-            withUIContext {
-                if (view == null) return@withUIContext
-                adapter?.onPagesLoaded(section, pages, attachItems = !recyclerScrolling)
-            }
         }
     }
 
@@ -900,6 +907,10 @@ class MangaDetailsController :
             binding.recycler.updatePaddingRelative(top = headerHeight + 4.dpToPx)
         }
         getHeader()?.setTopHeight(headerHeight)
+        binding.pagesPreviewRecycler.updatePaddingRelative(
+            top = headerHeight + 8.dpToPx,
+            bottom = systemInsets.bottom + 16.dpToPx,
+        )
         binding.fastScroller.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = headerHeight
             bottomMargin = systemInsets.bottom
@@ -1062,6 +1073,7 @@ class MangaDetailsController :
             binding.recycler.itemAnimator = null
             tabletAdapter?.notifyItemChanged(0)
             adapter?.setChapters(chapters)
+            previewAdapter?.setChapters(chapters)
             addMangaHeader()
             updateFab()
             binding.recycler.itemAnimator = itemAnimator
@@ -1113,6 +1125,19 @@ class MangaDetailsController :
         if (!type.isEnter) {
             activityBinding?.root?.clearFocus()
         }
+    }
+
+    override fun handleBack(): Boolean {
+        if (previewOpen || binding.pagesPreviewRecycler.visibility == View.VISIBLE) {
+            hintAnimating = false
+            previewAdapter?.suppressPageLoads = false
+            binding.pagesPreviewRecycler.animate().cancel()
+            swipeAnimating = false
+            binding.pagesPreviewRecycler.translationX = binding.pagesPreviewRecycler.width.toFloat()
+            onPreviewClosed()
+            return true
+        }
+        return super.handleBack()
     }
     //endregion
 
@@ -1203,6 +1228,7 @@ class MangaDetailsController :
     fun updateHeader() {
         binding.swipeRefresh.isRefreshing = presenter.isLoading
         adapter?.setChapters(presenter.chapters)
+        previewAdapter?.setChapters(presenter.chapters)
         tabletAdapter?.notifyItemChanged(0)
         addMangaHeader()
         updateMenuVisibility(activityBinding?.toolbar?.menu)
@@ -1225,15 +1251,42 @@ class MangaDetailsController :
         }
     }
 
+    private fun updateFabVisibility() {
+        val headerBinding = getHeader()?.binding
+        if (headerBinding == null) {
+            if (binding.fab.isEnabled) {
+                binding.fab.show()
+            } else {
+                binding.fab.isVisible = false
+            }
+            return
+        }
+
+        if (!headerBinding.startReadingButton.isVisible || !headerBinding.startReadingButton.isEnabled) {
+            binding.fab.isVisible = false
+            return
+        }
+
+        val bound = Rect()
+        binding.recycler.getHitRect(bound)
+        if (headerBinding.startReadingButton.getLocalVisibleRect(bound)) {
+            binding.fab.hide()
+        } else {
+            binding.fab.show()
+        }
+    }
+
     fun updateChapters() {
         view ?: return
         binding.swipeRefresh.isRefreshing = presenter.isLoading
         tabletAdapter?.notifyItemChanged(0)
         adapter?.setChapters(presenter.chapters)
+        previewAdapter?.setChapters(presenter.chapters)
         addMangaHeader()
         updateFab()
         colorToolbar(binding.recycler.canScrollVertically(-1))
         updateMenuVisibility(activityBinding?.toolbar?.menu)
+        scheduleSwipeHint()
     }
 
     private fun addMangaHeader() {
@@ -1253,12 +1306,7 @@ class MangaDetailsController :
     fun refreshAdapter() = adapter?.notifyDataSetChanged()
 
     override fun onItemClick(view: View?, position: Int): Boolean {
-        val item = adapter?.getItem(position)
-        if (item is ChapterPageItem) {
-            openChapter(item.chapter, page = item.page.index)
-            return false
-        }
-        val chapterItem = (item as? ChapterItem) ?: return false
+        val chapterItem = (adapter?.getItem(position) as? ChapterItem) ?: return false
         val chapter = chapterItem.chapter
         if (actionMode != null) {
             if (startingRangeChapterPos == null) {
@@ -1526,6 +1574,8 @@ class MangaDetailsController :
 
             adapter?.setFilter(query)
             adapter?.performFilter()
+            previewAdapter?.setFilter(query)
+            previewAdapter?.performFilter()
             true
         }
     }
@@ -2281,11 +2331,16 @@ class MangaDetailsController :
 
         private const val DEFAULT_GRID_SPAN_COUNT = 3
 
-        private const val MIN_SWIPE_DISTANCE_DP = 48
-        private const val EDGE_SWIPE_FOLLOW = 0.2f
-        private const val SWIPE_SETTLE_MS = 160L
-        private const val SWIPE_OUT_MS = 170L
-        private const val SWIPE_IN_MS = 190L
+        private const val PANEL_SWIPE_THRESHOLD = 0.28f
+        private const val PANEL_FLING_VELOCITY = 900f
+        private const val PANEL_ANIM_MS = 240L
+        private const val PANEL_ANIM_MIN_MS = 100L
+
+        private const val PANEL_HINT_DELAY_MS = 700L
+        private const val PANEL_HINT_PEEK = 0.18f
+        private const val PANEL_HINT_IN_MS = 320L
+        private const val PANEL_HINT_HOLD_MS = 180L
+        private const val PANEL_HINT_OUT_MS = 260L
 
         private enum class RangeMode {
             Download,

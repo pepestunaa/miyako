@@ -41,7 +41,7 @@ class ChapterPagesSectionHolder(
         binding.chapterPagesStatus.text = status
         itemView.setOnClickListener(
             if (item.state == ChapterPagesSectionItem.State.Error) {
-                View.OnClickListener { adapter.controller.retryPageSection(item) }
+                View.OnClickListener { adapter.retryPageSection(item) }
             } else {
                 null
             },

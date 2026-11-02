@@ -65,6 +65,8 @@ class PreferencesHelper(val context: Context, val preferenceStore: PreferenceSto
 
     fun hasShownNotifPermission() = preferenceStore.getBoolean("has_shown_notification_permission", false)
 
+    fun hasShownDetailSwipeHint() = preferenceStore.getBoolean("has_shown_detail_swipe_hint", false)
+
     fun hasDeniedA11FilePermission() = preferenceStore.getBoolean(Keys.deniedA11FilePermission, false)
 
     fun nightMode() = preferenceStore.getInt(Keys.nightMode, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
