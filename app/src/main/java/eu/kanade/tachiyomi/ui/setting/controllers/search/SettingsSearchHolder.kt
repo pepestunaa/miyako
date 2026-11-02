@@ -11,7 +11,6 @@ import eu.kanade.tachiyomi.databinding.SettingsSearchControllerCardBinding
 import eu.kanade.tachiyomi.ui.setting.SettingsLegacyController
 import eu.kanade.tachiyomi.util.lang.highlightText
 import eu.kanade.tachiyomi.util.system.getResourceColor
-import kotlin.reflect.full.createInstance
 
 /**
  * Holder that binds the [SettingsSearchItem] containing catalogue cards.
@@ -26,7 +25,7 @@ class SettingsSearchHolder(view: View, val adapter: SettingsSearchAdapter) :
     init {
         binding.titleWrapper.setOnClickListener {
             adapter.getItem(bindingAdapterPosition)?.let {
-                val ctrl = it.settingsSearchResult.searchController::class.createInstance()
+                val ctrl = it.settingsSearchResult.controllerFactory()
                 if (ctrl !is SettingsLegacyController) return@let
 
                 ctrl.preferenceKey = it.settingsSearchResult.key

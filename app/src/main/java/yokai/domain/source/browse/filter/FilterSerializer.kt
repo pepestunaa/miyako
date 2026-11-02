@@ -2,8 +2,6 @@ package yokai.domain.source.browse.filter
 
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
-import kotlin.reflect.KMutableProperty1
-import kotlin.reflect.full.isSubclassOf
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -37,13 +35,15 @@ class FilterSerializer {
     fun serialize(filter: Filter<Any?>): JsonObject {
         return serializers
             .filterIsInstance<Serializer<Filter<Any?>>>()
-            .firstOrNull { filter::class.isSubclassOf(it.clazz) }
+            .firstOrNull { it.clazz.isInstance(filter) }
             ?.let { serializer ->
                 buildJsonObject {
                     with(serializer) { serialize(filter) }
 
                     serializer.mappings().forEach {
-                        val res = it.second.get(filter)
+                        @Suppress("UNCHECKED_CAST")
+                        val property = it.second as Property<Filter<Any?>>
+                        val res = property.get(filter)
                         putJsonObject(it.first) {
                             put(Serializer.TYPE, res?.javaClass?.name ?: "null")
                             put("value", res.toString())
@@ -70,7 +70,7 @@ class FilterSerializer {
         serializer.deserialize(json, filter)
 
         serializer.mappings().forEach {
-            if (it.second is KMutableProperty1) {
+            if (it.second.set != null) {
                 val valueObj = json[it.first]!!.jsonObject
                 val obj = valueObj["value"]!!.jsonPrimitive
                 val res: Any? = when (valueObj[Serializer.TYPE]!!.jsonPrimitive.content) {
@@ -87,7 +87,7 @@ class FilterSerializer {
                     else -> throw IllegalArgumentException("Cannot deserialize this type!")
                 }
                 @Suppress("UNCHECKED_CAST")
-                (it.second as KMutableProperty1<in Filter<Any?>, in Any?>).set(filter, res)
+                (it.second as Property<Filter<Any?>>).set?.invoke(filter, res)
             }
         }
     }

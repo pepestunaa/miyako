@@ -22,8 +22,6 @@ import eu.kanade.tachiyomi.ui.setting.controllers.legacy.SettingsAdvancedLegacyC
 import eu.kanade.tachiyomi.ui.setting.controllers.legacy.SettingsDataLegacyController
 import eu.kanade.tachiyomi.util.system.isLTR
 import eu.kanade.tachiyomi.util.system.launchNow
-import kotlin.reflect.KClass
-import kotlin.reflect.full.createInstance
 
 object SettingsSearchHelper {
     private var prefSearchResultList: MutableList<SettingsSearchResult> = mutableListOf()
@@ -31,18 +29,18 @@ object SettingsSearchHelper {
     /**
      * All subclasses of `SettingsController` should be listed here, in order to have their preferences searchable.
      */
-    private val settingControllersList: List<KClass<out SettingsControllerInterface>> = listOf(
-        SettingsAdvancedLegacyController::class,
-        SettingsDataLegacyController::class,
+    private val settingControllersList: List<() -> SettingsControllerInterface> = listOf(
+        ::SettingsAdvancedLegacyController,
+        ::SettingsDataLegacyController,
         // SettingsDataController::class,  // compose
-        SettingsBrowseController::class,
-        SettingsDownloadController::class,
-        SettingsGeneralController::class,
-        SettingsAppearanceController::class,
-        SettingsSecurityController::class,
-        SettingsLibraryController::class,
-        SettingsReaderController::class,
-        SettingsTrackingController::class,
+        ::SettingsBrowseController,
+        ::SettingsDownloadController,
+        ::SettingsGeneralController,
+        ::SettingsAppearanceController,
+        ::SettingsSecurityController,
+        ::SettingsLibraryController,
+        ::SettingsReaderController,
+        ::SettingsTrackingController,
     )
 
     /**
@@ -54,8 +52,8 @@ object SettingsSearchHelper {
         prefSearchResultList.clear()
 
         launchNow {
-            settingControllersList.forEach { kClass ->
-                when (val ctrl = kClass.createInstance()) {
+            settingControllersList.forEach { createController ->
+                when (val ctrl = createController()) {
                     is SettingsLegacyController -> {
                         val settingsPrefScreen =
                             ctrl.setupPreferenceScreen(preferenceManager.createPreferenceScreen(context))
@@ -63,7 +61,7 @@ object SettingsSearchHelper {
                         for (i in 0 until prefCount) {
                             val rootPref = settingsPrefScreen.getPreference(i)
                             if (rootPref.title == null) continue // no title, not a preference. (note: only info notes appear to not have titles)
-                            getLegacySettingSearchResult(ctrl, rootPref, "${settingsPrefScreen.title}")
+                            getLegacySettingSearchResult(ctrl, rootPref, createController, "${settingsPrefScreen.title}")
                         }
                     }
                     is SettingsComposeController -> {
@@ -92,6 +90,7 @@ object SettingsSearchHelper {
     private fun getLegacySettingSearchResult(
         ctrl: SettingsLegacyController,
         pref: Preference,
+        createController: () -> SettingsControllerInterface,
         breadcrumbs: String = "",
     ) {
         val resources = ctrl.resources
@@ -101,7 +100,7 @@ object SettingsSearchHelper {
 
                 for (x in 0 until pref.preferenceCount) {
                     val subPref = pref.getPreference(x)
-                    getLegacySettingSearchResult(ctrl, subPref, breadcrumbsStr) // recursion
+                    getLegacySettingSearchResult(ctrl, subPref, createController, breadcrumbsStr) // recursion
                 }
             }
             pref is PreferenceCategory -> {
@@ -109,7 +108,7 @@ object SettingsSearchHelper {
 
                 for (x in 0 until pref.preferenceCount) {
                     val subPref = pref.getPreference(x)
-                    getLegacySettingSearchResult(ctrl, subPref, breadcrumbsStr) // recursion
+                    getLegacySettingSearchResult(ctrl, subPref, createController, breadcrumbsStr) // recursion
                 }
             }
             (pref.title != null && pref.isVisible) -> {
@@ -125,6 +124,7 @@ object SettingsSearchHelper {
                         summary = summary,
                         breadcrumb = breadcrumbs,
                         searchController = ctrl,
+                        controllerFactory = createController,
                     ),
                 )
             }
@@ -147,5 +147,6 @@ object SettingsSearchHelper {
         val summary: String,
         val breadcrumb: String,
         val searchController: SettingsControllerInterface,
+        val controllerFactory: () -> SettingsControllerInterface,
     )
 }

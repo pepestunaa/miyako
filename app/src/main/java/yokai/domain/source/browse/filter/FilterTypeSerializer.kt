@@ -1,8 +1,6 @@
 package yokai.domain.source.browse.filter
 
 import eu.kanade.tachiyomi.source.model.Filter
-import kotlin.reflect.KClass
-import kotlin.reflect.KProperty1
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -18,15 +16,20 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
+class Property<T>(
+    val get: (T) -> Any?,
+    val set: ((T, Any?) -> Unit)? = null,
+)
+
 interface Serializer<in T : Filter<out Any?>> {
     fun JsonObjectBuilder.serialize(filter: T) {}
     fun deserialize(json: JsonObject, filter: T) {}
 
-    fun mappings(): List<Pair<String, KProperty1<in T, *>>> = emptyList()
+    fun mappings(): List<Pair<String, Property<*>>> = emptyList()
 
     val serializer: FilterSerializer
     val type: String
-    val clazz: KClass<in T>
+    val clazz: Class<out Filter<*>>
 
     companion object {
         const val TYPE = "_type"
@@ -37,25 +40,25 @@ interface Serializer<in T : Filter<out Any?>> {
 
 class HeaderSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Header> {
     override val type = "HEADER"
-    override val clazz = Filter.Header::class
+    override val clazz: Class<out Filter<*>> = Filter.Header::class.java
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.Header::name,
+        Serializer.NAME to Property<Filter.Header>({ it.name }),
     )
 }
 
 class SeparatorSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Separator> {
     override val type = "SEPARATOR"
-    override val clazz = Filter.Separator::class
+    override val clazz: Class<out Filter<*>> = Filter.Separator::class.java
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.Separator::name,
+        Serializer.NAME to Property<Filter.Separator>({ it.name }),
     )
 }
 
 class SelectSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Select<Any>> {
     override val type = "SELECT"
-    override val clazz = Filter.Select::class
+    override val clazz: Class<out Filter<*>> = Filter.Select::class.java
 
     override fun JsonObjectBuilder.serialize(filter: Filter.Select<Any>) {
         putJsonArray("values") {
@@ -64,44 +67,56 @@ class SelectSerializer(override val serializer: FilterSerializer) : Serializer<F
     }
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.Select<Any>::name,
-        Serializer.STATE to Filter.Select<Any>::state,
+        Serializer.NAME to Property<Filter.Select<Any>>({ it.name }),
+        Serializer.STATE to Property<Filter.Select<Any>>(
+            get = { it.state },
+            set = { filter, value -> filter.state = value as Int },
+        ),
     )
 }
 
 class TextSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Text> {
     override val type = "TEXT"
-    override val clazz = Filter.Text::class
+    override val clazz: Class<out Filter<*>> = Filter.Text::class.java
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.Text::name,
-        Serializer.STATE to Filter.Text::state,
+        Serializer.NAME to Property<Filter.Text>({ it.name }),
+        Serializer.STATE to Property<Filter.Text>(
+            get = { it.state },
+            set = { filter, value -> filter.state = value as String },
+        ),
     )
 }
 
 class CheckBoxSerializer(override val serializer: FilterSerializer) : Serializer<Filter.CheckBox> {
     override val type = "CHECKBOX"
-    override val clazz = Filter.CheckBox::class
+    override val clazz: Class<out Filter<*>> = Filter.CheckBox::class.java
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.CheckBox::name,
-        Serializer.STATE to Filter.CheckBox::state,
+        Serializer.NAME to Property<Filter.CheckBox>({ it.name }),
+        Serializer.STATE to Property<Filter.CheckBox>(
+            get = { it.state },
+            set = { filter, value -> filter.state = value as Boolean },
+        ),
     )
 }
 
 class TriStateSerializer(override val serializer: FilterSerializer) : Serializer<Filter.TriState> {
     override val type = "TRI_STATE"
-    override val clazz = Filter.TriState::class
+    override val clazz: Class<out Filter<*>> = Filter.TriState::class.java
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.TriState::name,
-        Serializer.STATE to Filter.TriState::state,
+        Serializer.NAME to Property<Filter.TriState>({ it.name }),
+        Serializer.STATE to Property<Filter.TriState>(
+            get = { it.state },
+            set = { filter, value -> filter.state = value as Int },
+        ),
     )
 }
 
 class GroupSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Group<Any?>> {
     override val type = "GROUP"
-    override val clazz = Filter.Group::class
+    override val clazz: Class<out Filter<*>> = Filter.Group::class.java
 
     override fun JsonObjectBuilder.serialize(filter: Filter.Group<Any?>) {
         putJsonObject(VALUES) {
@@ -137,7 +152,7 @@ class GroupSerializer(override val serializer: FilterSerializer) : Serializer<Fi
     }
 
     override fun mappings() = listOf(
-        Serializer.NAME to Filter.Group<Any?>::name,
+        Serializer.NAME to Property<Filter.Group<Any?>>({ it.name }),
     )
 
     companion object {
@@ -147,7 +162,7 @@ class GroupSerializer(override val serializer: FilterSerializer) : Serializer<Fi
 
 class SortSerializer(override val serializer: FilterSerializer) : Serializer<Filter.Sort> {
     override val type = "SORT"
-    override val clazz = Filter.Sort::class
+    override val clazz: Class<out Filter<*>> = Filter.Sort::class.java
 
     override fun JsonObjectBuilder.serialize(filter: Filter.Sort) {
         putJsonArray(VALUES) {
@@ -175,7 +190,7 @@ class SortSerializer(override val serializer: FilterSerializer) : Serializer<Fil
     }
 
     override fun mappings() = listOf(
-        Pair(Serializer.NAME, Filter.Sort::name),
+        Serializer.NAME to Property<Filter.Sort>({ it.name }),
     )
 
     companion object {
