@@ -642,7 +642,9 @@ class MangaDetailsController :
                         MotionEvent.ACTION_UP -> {
                             val dx = e.x - downX
                             if (horizontalSwipe && abs(dx) > minDistance) {
-                                setChapterLayout(dx < 0)
+                                // Either direction flips between Chapters and Pages, so swiping
+                                // right opens Pages and swiping left brings Chapters back.
+                                adapter?.let { setChapterLayout(!it.pageGridMode) }
                             }
                             horizontalSwipe = false
                         }
@@ -654,13 +656,14 @@ class MangaDetailsController :
     }
 
     private fun startsOnSwipeableChapter(recycler: RecyclerView, event: MotionEvent): Boolean {
-        // Chapter rows already handle horizontal swipes (bookmark/read), so leave those to the adapter.
+        // Chapter rows already handle horizontal swipes (bookmark/read), so leave those to the helper.
+        // Rows that can't be swiped don't block the layout swipe, otherwise the gesture would be dead.
         val adapter = adapter ?: return false
         if (adapter.pageGridMode) return false
         val child = recycler.findChildViewUnder(event.x, event.y) ?: return false
         val position = recycler.getChildAdapterPosition(child)
         if (position == RecyclerView.NO_POSITION) return false
-        return adapter.getItem(position) is ChapterItem
+        return (adapter.getItem(position) as? ChapterItem)?.isSwipeable() == true
     }
 
     private class ChapterSwipeCallback(
