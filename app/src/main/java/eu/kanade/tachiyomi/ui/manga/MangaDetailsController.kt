@@ -681,9 +681,7 @@ class MangaDetailsController :
             return true
         }
 
-        fun finishDrag() {
-            velocityTracker.computeCurrentVelocity(1000)
-            val velocityX = velocityTracker.xVelocity
+        fun settleDrag(velocityX: Float = 0f) {
             val translation = binding.pagesPreviewRecycler.translationX
             val complete = if (opensPanel) {
                 translation < dragWidth - dragWidth * PANEL_SWIPE_THRESHOLD ||
@@ -698,11 +696,16 @@ class MangaDetailsController :
             }
         }
 
+        fun finishDrag() {
+            velocityTracker.computeCurrentVelocity(1000)
+            settleDrag(velocityTracker.xVelocity)
+        }
+
         fun cancelDrag() {
-            val returnClosed = opensPanel
-            animatePreviewPanel(if (returnClosed) dragWidth else 0f) {
-                if (returnClosed) onPreviewClosed() else onPreviewOpened()
-            }
+            // RecyclerView can cancel a horizontal drag when another touch participant wins
+            // the gesture. Keep the panel's current progress as the source of truth instead of
+            // always snapping back; otherwise a mostly completed swipe flashes in and closes.
+            settleDrag()
         }
 
         recycler.addOnItemTouchListener(
