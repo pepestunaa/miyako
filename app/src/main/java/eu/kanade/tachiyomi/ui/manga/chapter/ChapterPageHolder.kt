@@ -51,13 +51,15 @@ class ChapterPageHolder(
             binding.pageImage.setImageDrawable(null)
         }
         boundItem = item
-        loadImageIfNeeded()
+        // Bind runs before the holder is positioned; check visibility after the layout pass.
+        itemView.post { loadImageIfNeeded() }
     }
 
     fun loadImageIfNeeded() {
         if (disposable != null) return
         // During a fling the grid passes over many chapters; only fetch what stays on screen.
         if (adapter.isFlinging) return
+        if (!isOnScreen()) return
         val item = boundItem ?: return
         val context = itemView.context
         val source = adapter.presenter.getHttpSource() ?: return
@@ -68,6 +70,14 @@ class ChapterPageHolder(
             .target(ImageViewTarget(binding.pageImage))
             .build()
         disposable = context.imageLoader.enqueue(request)
+    }
+
+    private fun isOnScreen(): Boolean {
+        val recycler = adapter.recyclerView ?: return false
+        if (itemView.parent !== recycler) return false
+        val top = recycler.paddingTop
+        val bottom = recycler.height - recycler.paddingBottom
+        return itemView.bottom > top && itemView.top < bottom
     }
 
     fun dispose() {

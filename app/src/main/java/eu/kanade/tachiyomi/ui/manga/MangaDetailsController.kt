@@ -621,6 +621,13 @@ class MangaDetailsController :
                     if (newState == RecyclerView.SCROLL_STATE_DRAGGING) adapter.cancelPendingScroll()
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) adapter.loadVisiblePageSections()
                 }
+
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    // Fill thumbnails as rows enter the viewport during a drag; flings load on IDLE.
+                    if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                        adapter.loadVisiblePageSections()
+                    }
+                }
             },
         )
     }
