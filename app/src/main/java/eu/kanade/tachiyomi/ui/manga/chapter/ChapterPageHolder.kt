@@ -24,6 +24,7 @@ class ChapterPageHolder(
     private val binding = ChapterPageItemBinding.bind(view)
     private var disposable: Disposable? = null
     private var boundPage: Pair<Long, Int>? = null
+    private var boundItem: ChapterPageItem? = null
 
     private val thumbnailSize: Size by lazy {
         val width = itemView.resources.getDimensionPixelSize(R.dimen.chapter_page_grid_preferred_width)
@@ -43,11 +44,22 @@ class ChapterPageHolder(
         }
 
         val pageKey = (item.chapter.id ?: 0L) to item.page.index
-        if (pageKey == boundPage) return
-        boundPage = pageKey
-        disposable?.dispose()
-        disposable = null
+        if (pageKey != boundPage) {
+            boundPage = pageKey
+            disposable?.dispose()
+            disposable = null
+            binding.pageImage.setImageDrawable(null)
+        }
+        boundItem = item
+        loadImageIfNeeded()
+    }
 
+    fun loadImageIfNeeded() {
+        if (disposable != null) return
+        // During a fling the grid passes over many chapters; only fetch what stays on screen.
+        if (adapter.isFlinging) return
+        val item = boundItem ?: return
+        val context = itemView.context
         val source = adapter.presenter.getHttpSource() ?: return
         val request = ImageRequest.Builder(context)
             .data(ChapterPageImage(item.chapter, item.page, source))
@@ -62,6 +74,7 @@ class ChapterPageHolder(
         disposable?.dispose()
         disposable = null
         boundPage = null
+        boundItem = null
         binding.pageImage.setImageDrawable(null)
     }
 

@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.manga.chapter.BaseChapterAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
+import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil
@@ -157,6 +158,7 @@ class MangaDetailsAdapter(
         val recycler = recyclerView ?: return
         for (i in 0 until recycler.childCount) {
             val child = recycler.getChildAt(i) ?: continue
+            (recycler.getChildViewHolder(child) as? ChapterPageHolder)?.loadImageIfNeeded()
             val position = recycler.getChildAdapterPosition(child)
             if (position == RecyclerView.NO_POSITION) continue
             (getItem(position) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
@@ -294,6 +296,9 @@ class MangaDetailsAdapter(
 
     val isScrolling: Boolean
         get() = recyclerView?.scrollState != RecyclerView.SCROLL_STATE_IDLE
+
+    val isFlinging: Boolean
+        get() = recyclerView?.scrollState == RecyclerView.SCROLL_STATE_SETTLING
 
     fun onPagesLoaded(
         section: ChapterPagesSectionItem,
