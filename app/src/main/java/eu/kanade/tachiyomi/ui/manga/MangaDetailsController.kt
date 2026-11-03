@@ -798,23 +798,28 @@ class MangaDetailsController :
 
     private fun scheduleSwipeHint() {
         if (hintScheduled || isTablet) return
-        if (presenter.preferences.hasShownDetailSwipeHint().get()) return
+        val mangaId = manga?.id ?: return
+        if (presenter.preferences.hasShownDetailSwipeHint(mangaId)) return
         val view = view ?: return
+        // Chapters load asynchronously; stay unarmed until the preview grid has content,
+        // otherwise a slow manga would consume the one scheduled hint and never show it.
+        if ((previewAdapter?.itemCount ?: 0) == 0) return
         hintScheduled = true
         view.postDelayed({ showSwipeHint() }, PANEL_HINT_DELAY_MS)
     }
 
     private fun showSwipeHint() {
         if (view == null) return
-        if (presenter.preferences.hasShownDetailSwipeHint().get()) return
         val manga = manga ?: return
+        val mangaId = manga.id ?: return
+        if (presenter.preferences.hasShownDetailSwipeHint(mangaId)) return
         if (isTablet || manga.isLocal() || previewOpen || swipeAnimating || hintAnimating) return
         val panel = binding.pagesPreviewRecycler
         if (panel.visibility != View.GONE) return
         val adapter = previewAdapter ?: return
         val width = binding.recycler.width.toFloat()
         if (width <= 0f || adapter.itemCount == 0) return
-        presenter.preferences.hasShownDetailSwipeHint().set(true)
+        presenter.preferences.markDetailSwipeHintShown(mangaId)
         // Nudge the right-docked panel into view and back so the swipe affordance is obvious.
         hintAnimating = true
         adapter.suppressPageLoads = true
@@ -899,9 +904,7 @@ class MangaDetailsController :
 
     private fun onPreviewOpened() {
         previewOpen = true
-        if (!presenter.preferences.hasShownDetailSwipeHint().get()) {
-            presenter.preferences.hasShownDetailSwipeHint().set(true)
-        }
+        manga?.id?.let { presenter.preferences.markDetailSwipeHintShown(it) }
         binding.pagesPreviewScrimTop.apply {
             visibility = View.VISIBLE
             alpha = 1f

@@ -65,7 +65,14 @@ class PreferencesHelper(val context: Context, val preferenceStore: PreferenceSto
 
     fun hasShownNotifPermission() = preferenceStore.getBoolean("has_shown_notification_permission", false)
 
-    fun hasShownDetailSwipeHint() = preferenceStore.getBoolean("has_shown_detail_swipe_hint", false)
+    fun hasShownDetailSwipeHint(mangaId: Long) =
+        preferenceStore.getStringSet("shown_detail_swipe_hints", emptySet())
+            .get().contains(mangaId.toString())
+
+    fun markDetailSwipeHintShown(mangaId: Long) {
+        val shown = preferenceStore.getStringSet("shown_detail_swipe_hints", emptySet())
+        shown.set(shown.get() + mangaId.toString())
+    }
 
     fun hasDeniedA11FilePermission() = preferenceStore.getBoolean(Keys.deniedA11FilePermission, false)
 
