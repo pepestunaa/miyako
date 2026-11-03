@@ -20,7 +20,8 @@ A free and open source manga reader for Android
 
 ## Download
 
-Builds of this fork are published on the [Releases](https://github.com/pepestunaa/miyako/releases) page of this repository.
+There are no prebuilt releases for this fork yet. Build it from source with
+`./gradlew :app:assembleStandardRelease`.
 
 *Requires Android 8.0 or higher.*
 
@@ -31,30 +32,33 @@ Miyako is a personal fork of [Yōkai](https://github.com/null2264/yokai) maintai
 [Mihon](https://github.com/mihonapp/mihon), which descends from the original
 [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi).
 
-The app keeps Yōkai's UI/UX and feature set intact. All changes in this fork aim to make the app
-feel lighter, faster, and smoother — nothing from upstream is removed, and no new UI/UX that
-contradicts Yōkai is introduced.
+The fork keeps Yōkai's look, navigation, and reading experience. The changes below focus on a
+lighter install, lower memory usage, and smoother manga details — preserving the existing UI/UX
+instead of introducing a new one.
 
-### Changes in this fork
+### What changed in this fork
 
-**Lighter app, lower memory**
-* Slimmed build: onboarding flow, crash reporting, and unused dependencies removed (`kotlin-reflect`),
-  and `image-decoder` replaced with `libavif` plus the platform decoder.
-* Disk image caching and reader preloading that backs off under memory pressure.
-* History writes use update-or-insert instead of upserts.
-* Faster local builds via a `devAbi` flag and parallel Gradle.
+**Lighter and faster**
+* Removed Firebase Crashlytics/analytics, the Conscrypt TLS provider, QuickJS, `kotlin-reflect`,
+  `slice`, and other unused dependencies.
+* Removed the onboarding flow and its entry points.
+* Standard flavor ships English-only resources, with compressed JNI libraries.
+* Replaced `image-decoder` with `libavif` plus the platform decoder.
+* Added disk image caching and skip reader preloading under memory pressure.
+* Fixed history writes to use update-or-insert instead of upserts.
+* Added a `devAbi` flag and parallel Gradle for quicker local builds.
 
-**Manga details and pages preview**
-* Usagi-style page grid: each chapter expands into its page thumbnails right on the details screen.
-* Swipe the details screen left to reveal a right-docked pages preview for every chapter, with a
-  one-time affordance hint on first open.
-* Magnetic swipes: a short swipe or light flick completes the open/close gesture, so a missed swipe
-  never has to be repeated.
-* The preview anchors to the last-read page with a smooth glide, and its page marker follows the
-  most recently read chapter instead of the first unread one.
+**Manga details**
+* Usagi-style page grid: every chapter expands into its page thumbnails on the details screen.
+* Swipe left on the details screen to open a right-docked pages preview, with a one-time swipe hint
+  on first use.
+* Magnetic swipe: a short swipe or light flick completes opening/closing the preview.
+* The preview anchors and glides to the last-read page.
+* The preview page marker follows the most recently read chapter, even when reading ahead in a
+  manga with many chapters.
 * Top and bottom scrims keep the status bar and navigation area readable over the preview.
-* Chapters and Pages switch with a directional, drag-following swipe, styled like the app's main tabs,
-  while chapter rows keep their original swipe actions.
+* Chapters and Pages switch with a directional, drag-following swipe, styled like the app's main
+  tabs, and chapter rows keep their original swipe actions.
 
 ## Features
 
