@@ -608,6 +608,7 @@ class MangaDetailsController :
         recycler.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) adapter.cancelPendingScroll()
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) adapter.loadVisiblePageSections()
                 }
             },
@@ -656,6 +657,7 @@ class MangaDetailsController :
             val dx = e.rawX - downRawX
             binding.pagesPreviewRecycler.translationX =
                 (dragStartTranslation + dx).coerceIn(0f, dragWidth)
+            updatePreviewScrimAlpha()
         }
 
         fun beginDrag(e: MotionEvent): Boolean {
@@ -664,8 +666,12 @@ class MangaDetailsController :
                 if (width <= 0) return false
                 // The panel stays GONE while closed, so show it already parked off-screen right.
                 binding.pagesPreviewRecycler.visibility = View.VISIBLE
+                showPreviewScrims()
                 dragStartTranslation = width.toFloat()
                 dragWidth = width.toFloat()
+                // Anchor while the drag is still in progress: the list is settled on the
+                // last-read page by the time the panel finishes sliding in.
+                previewAdapter?.scrollToCurrentPage()
             } else {
                 dragStartTranslation = 0f
                 dragWidth = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
@@ -834,6 +840,41 @@ class MangaDetailsController :
                 onEnd()
             }
             .start()
+        animatePreviewScrimAlpha(1f - (target / width).coerceIn(0f, 1f), duration)
+    }
+
+    private fun showPreviewScrims() {
+        binding.pagesPreviewScrimTop.apply {
+            visibility = View.VISIBLE
+            alpha = 0f
+        }
+        binding.pagesPreviewScrimBottom.apply {
+            visibility = View.VISIBLE
+            alpha = 0f
+        }
+    }
+
+    private fun updatePreviewScrimAlpha() {
+        if (binding.pagesPreviewScrimTop.visibility != View.VISIBLE) return
+        val width = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
+        val alpha = 1f - (binding.pagesPreviewRecycler.translationX / width).coerceIn(0f, 1f)
+        binding.pagesPreviewScrimTop.alpha = alpha
+        binding.pagesPreviewScrimBottom.alpha = alpha
+    }
+
+    private fun animatePreviewScrimAlpha(alpha: Float, duration: Long) {
+        if (binding.pagesPreviewScrimTop.visibility != View.VISIBLE) return
+        binding.pagesPreviewScrimTop.animate().cancel()
+        binding.pagesPreviewScrimBottom.animate().cancel()
+        binding.pagesPreviewScrimTop.animate().alpha(alpha).setDuration(duration).start()
+        binding.pagesPreviewScrimBottom.animate().alpha(alpha).setDuration(duration).start()
+    }
+
+    private fun hidePreviewScrims() {
+        binding.pagesPreviewScrimTop.animate().cancel()
+        binding.pagesPreviewScrimBottom.animate().cancel()
+        binding.pagesPreviewScrimTop.visibility = View.GONE
+        binding.pagesPreviewScrimBottom.visibility = View.GONE
     }
 
     private fun onPreviewOpened() {
@@ -841,7 +882,14 @@ class MangaDetailsController :
         if (!presenter.preferences.hasShownDetailSwipeHint().get()) {
             presenter.preferences.hasShownDetailSwipeHint().set(true)
         }
-        previewAdapter?.scrollToCurrentPage()
+        binding.pagesPreviewScrimTop.apply {
+            visibility = View.VISIBLE
+            alpha = 1f
+        }
+        binding.pagesPreviewScrimBottom.apply {
+            visibility = View.VISIBLE
+            alpha = 1f
+        }
         binding.fab.hide()
         binding.fastScroller.isVisible = false
         binding.swipeRefresh.isEnabled = false
@@ -851,6 +899,7 @@ class MangaDetailsController :
         previewOpen = false
         previewAdapter?.cancelPendingScroll()
         binding.pagesPreviewRecycler.visibility = View.GONE
+        hidePreviewScrims()
         binding.swipeRefresh.isEnabled = true
         binding.fastScroller.isVisible = true
         updateFab()
@@ -911,6 +960,12 @@ class MangaDetailsController :
             top = headerHeight + 8.dpToPx,
             bottom = systemInsets.bottom + 16.dpToPx,
         )
+        binding.pagesPreviewScrimTop.updateLayoutParams<ViewGroup.LayoutParams> {
+            height = headerHeight + 16.dpToPx
+        }
+        binding.pagesPreviewScrimBottom.updateLayoutParams<ViewGroup.LayoutParams> {
+            height = systemInsets.bottom + 32.dpToPx
+        }
         binding.fastScroller.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = headerHeight
             bottomMargin = systemInsets.bottom
