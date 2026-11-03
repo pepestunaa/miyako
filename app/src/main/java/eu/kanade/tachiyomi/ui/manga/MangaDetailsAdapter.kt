@@ -63,13 +63,7 @@ class MangaDetailsAdapter(
     private var priorityChapterId: Long? = null
     private var viewportMovePending = false
     private var viewportAnchor: ViewportAnchor? = null
-    private var batchStart = 0
-    private var batchEnd = INITIAL_BATCH_SIZE
-    private var batchUpdatePending = false
-    private var batchFilter = ""
-    private var chapterIndexSource: List<ChapterItem>? = null
-    private var chapterIndexFilter = ""
-    private var chapterIndexById: Map<Long, Int> = emptyMap()
+    private var batchSize = INITIAL_BATCH_SIZE
 
     private val batchScrollListener = object : RecyclerView.OnScrollListener() {
         override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -93,102 +87,27 @@ class MangaDetailsAdapter(
      * only controls what the list shows, and grows as the user reaches the end.
      */
     private fun batchedItems(): List<ChapterItem> {
-        syncBatchFilter()
         val all = filteredItems()
-        normalizeBatchWindow(all)
-        return all.subList(batchStart, batchEnd)
+        return if (all.size <= batchSize) all else all.take(batchSize)
     }
 
     private fun extendBatchIfNeeded() {
-        syncBatchFilter()
         val all = filteredItems()
-        normalizeBatchWindow(all)
-        updateChapterIndex(all)
-        if (batchUpdatePending || (batchStart == 0 && batchEnd == all.size)) return
+        if (batchSize >= all.size) return
         val lm = recyclerView?.layoutManager as? LinearLayoutManager ?: return
-        val firstVisible = lm.findFirstVisibleItemPosition()
         val lastVisible = lm.findLastVisibleItemPosition()
-        if (firstVisible == RecyclerView.NO_POSITION || lastVisible == RecyclerView.NO_POSITION) return
-
-        val firstChapter = visibleChapterIndex(firstVisible, lastVisible, fromStart = true)
-        val lastChapter = visibleChapterIndex(firstVisible, lastVisible, fromStart = false)
-        val extendBefore = batchStart > 0 && firstChapter != null &&
-            firstChapter <= batchStart + BATCH_EXTEND_MARGIN
-        val extendAfter = batchEnd < all.size && lastChapter != null &&
-            lastChapter >= batchEnd - BATCH_EXTEND_MARGIN
-        if (!extendBefore && !extendAfter) return
-
-        val oldStart = batchStart
-        val oldEnd = batchEnd
-        if (extendBefore) batchStart = (batchStart - BATCH_EXTEND_STEP).coerceAtLeast(0)
-        if (extendAfter) batchEnd = (batchEnd + BATCH_EXTEND_STEP).coerceAtMost(all.size)
-        if (oldStart == batchStart && oldEnd == batchEnd) return
-
-        batchUpdatePending = true
+        if (lastVisible == RecyclerView.NO_POSITION) return
+        if (lastVisible < currentItems.size - BATCH_EXTEND_MARGIN) return
+        batchSize = (batchSize + BATCH_EXTEND_STEP).coerceAtMost(all.size)
         if (pageGridMode) rebuildPageGrid() else performFilter()
-        recyclerView?.post { batchUpdatePending = false }
-    }
-
-    private fun visibleChapterIndex(
-        firstVisible: Int,
-        lastVisible: Int,
-        fromStart: Boolean,
-    ): Int? {
-        val positions = if (fromStart) firstVisible..lastVisible else lastVisible downTo firstVisible
-        return positions.firstNotNullOfOrNull { position ->
-            val chapterId = when (val item = getItem(position)) {
-                is ChapterItem -> item.chapter.id
-                is ChapterPagesSectionItem -> item.chapter.id
-                is ChapterPageItem -> item.chapter.id
-                else -> null
-            }
-            chapterId?.let { id -> chapterIndexById[id] }
-        }
-    }
-
-    private fun updateChapterIndex(all: List<ChapterItem>) {
-        val filter = getFilter(String::class.java).orEmpty()
-        if (chapterIndexSource === items && chapterIndexFilter == filter) return
-        chapterIndexSource = items
-        chapterIndexFilter = filter
-        chapterIndexById = all.mapIndexed { index, item -> item.chapter.id to index }
-            .filter { it.first != null }
-            .associate { it.first!! to it.second }
     }
 
     private fun ensureChapterInBatch(chapterId: Long) {
-        syncBatchFilter()
         val all = filteredItems()
         val index = all.indexOfFirst { it.chapter.id == chapterId }
-        if (index == -1) return
-        normalizeBatchWindow(all)
-        if (index in batchStart until batchEnd) return
-
-        // Keep the first render bounded even when the last-read chapter is far down the list.
-        // The window remains ordered, and the scroll listener expands it in either direction as
-        // the reader reaches an edge.
-        batchStart = (index - INITIAL_BATCH_SIZE / 2).coerceAtLeast(0)
-        batchEnd = (batchStart + INITIAL_BATCH_SIZE).coerceAtMost(all.size)
-        batchStart = (batchEnd - INITIAL_BATCH_SIZE).coerceAtLeast(0)
+        if (index == -1 || index < batchSize) return
+        batchSize = (index + 1).coerceAtMost(all.size)
         if (pageGridMode) rebuildPageGrid() else performFilter()
-    }
-
-    private fun normalizeBatchWindow(all: List<ChapterItem>) {
-        if (all.isEmpty()) {
-            batchStart = 0
-            batchEnd = 0
-            return
-        }
-        batchStart = batchStart.coerceIn(0, all.lastIndex)
-        batchEnd = batchEnd.coerceIn(batchStart + 1, all.size)
-    }
-
-    private fun syncBatchFilter() {
-        val filter = getFilter(String::class.java).orEmpty()
-        if (filter == batchFilter) return
-        batchFilter = filter
-        batchStart = 0
-        batchEnd = INITIAL_BATCH_SIZE
     }
 
     val delegate: MangaDetailsInterface = controller
@@ -202,7 +121,6 @@ class MangaDetailsAdapter(
 
     fun setChapters(items: List<ChapterItem>?) {
         this.items = items ?: emptyList()
-        chapterIndexSource = null
         if (pageGridMode) {
             rebuildPageGrid()
             // The panel may have opened before history loaded; re-anchor now that it has.
@@ -677,10 +595,7 @@ class MangaDetailsAdapter(
     private fun refreshCurrentPage() {
         // Follow the most recently read chapter instead of the next unread one: reading ahead
         // must not leave the marker on an older chapter that was never finished.
-        val lastRead = presenter.allHistory
-            .asSequence()
-            .filter { it.last_read > 0L }
-            .maxByOrNull { it.last_read }
+        val lastRead = presenter.allHistory.maxByOrNull { it.last_read }
         val chapter = when {
             lastRead != null ->
                 presenter.chapters.firstOrNull { it.chapter.id == lastRead.chapter_id }?.chapter
