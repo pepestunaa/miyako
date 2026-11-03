@@ -24,3 +24,5 @@ git clone terlebih dahulu dan pahami halaman detailnya jika memungkinkan
 - [x] pada saat swipe berikan effect magnet agar tidak perlu mencoba swipe berulang2 ketika swipe gagal di lakukan 
 - [x] fix ketika halaman terakhir di baca sudah di atas masih ada animasi sedikit scorll yang agak glitch
 - [x] animasi scroll di preview page masih kurang smooth
+- [x] fix preview manga yang memiliki banyak chapter ketika aku membukan dan membaca chapter yang lebih jauh mial ch6 dan halaman terbuka tapi ketika di preview halaman yang berwarna biru masih di halaman lama atau ch lama yang terbuka dan belum selesai terbaca
+- [x] perlebar lagi effect magnet untuk membuka preview nya karena preview page masih sulit terbuka ketika swipe cepat 
