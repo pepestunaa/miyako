@@ -6,7 +6,7 @@
 
 # Miyako
 
-**A personal fork of [Yōkai](https://github.com/null2264/yokai): lighter, more memory-efficient, and smoother, without changing the app's UI/UX or removing its features.**
+**A personal fork of [Yōkai](https://github.com/null2264/yokai): lighter, more memory-efficient, and smoother, while keeping Yōkai's UI/UX language and feature set.**
 
 [![License: Apache-2.0](https://img.shields.io/github/license/pepestunaa/miyako?labelColor=27303D&color=0877d2)](/LICENSE)
 
@@ -28,8 +28,8 @@ The fork focuses on three things:
 - **Smoother**: make the manga details page feel fluid, using Usagi's page grid and pages preview as
   the UX reference.
 
-Nothing from Yōkai is removed. UI changes stay inside the manga details screen, reuse Yōkai's
-existing visual language, and do not introduce new screens or flows.
+No Yōkai reading or library feature is removed. UI additions stay inside the manga details screen,
+reuse Yōkai's existing visual language, and do not introduce new screens or flows.
 
 ## Download
 
@@ -72,7 +72,8 @@ your library first.
 
 ## Features
 
-Miyako keeps every Yōkai feature; nothing is removed. The feature set comes from Yōkai's lineage:
+Miyako keeps Yōkai's reading, library, and source features; none are removed. The feature set comes
+from Yōkai's lineage:
 
 ### From Yōkai
 
