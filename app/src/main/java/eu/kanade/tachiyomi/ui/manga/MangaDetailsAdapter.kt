@@ -275,7 +275,7 @@ class MangaDetailsAdapter(
         val anchor = viewportAnchor ?: captureTopRow(recycler)
         block()
         if (anchor == null) return
-        val position = getGlobalPositionOf(anchor.item)
+        val position = positionOfAnchor(anchor)
         if (position == RecyclerView.NO_POSITION) return
         layoutManager.scrollToPositionWithOffset(position, anchor.offset)
     }
@@ -290,6 +290,24 @@ class MangaDetailsAdapter(
     }
 
     private data class ViewportAnchor(val item: IFlexible<*>, val offset: Int)
+
+    private fun positionOfAnchor(anchor: ViewportAnchor): Int {
+        val exact = getGlobalPositionOf(anchor.item)
+        if (exact != RecyclerView.NO_POSITION) return exact
+        for (position in 0 until itemCount) {
+            val item = getItem(position)
+            val matches = when {
+                anchor.item is ChapterPagesSectionItem && item is ChapterPagesSectionItem ->
+                    anchor.item.chapter.id == item.chapter.id
+                anchor.item is ChapterPageItem && item is ChapterPageItem ->
+                    anchor.item.chapter.id == item.chapter.id &&
+                        anchor.item.page.index == item.page.index
+                else -> false
+            }
+            if (matches) return position
+        }
+        return RecyclerView.NO_POSITION
+    }
 
     private fun updateItems(items: List<IFlexible<*>>) {
         // FlexibleAdapter skips updateDataSet while a filter is active; filtering is handled by filteredItems().
@@ -365,6 +383,8 @@ class MangaDetailsAdapter(
             priorityChapterId = null
             pendingScrollToCurrent = !presenter.historyLoaded
             viewportAnchor = null
+            savedPreviewAnchor = null
+            animateFromSavedPosition = false
             if (presenter.historyLoaded) {
                 markViewportMove(recycler)
                 recycler.scrollToPosition(0)
@@ -396,6 +416,35 @@ class MangaDetailsAdapter(
         viewportAnchor = section?.let { ViewportAnchor(it, 0) }
         if (sectionPosition == null || section == null) {
             priorityChapterId = null
+            savedPreviewAnchor = null
+            animateFromSavedPosition = false
+            return
+        }
+        if (animateFromSavedPosition) {
+            if (currentPage == null) {
+                viewportAnchor = ViewportAnchor(section, 0)
+                animateToPosition(recycler, sectionPosition)
+                savedPreviewAnchor = null
+                animateFromSavedPosition = false
+                return
+            }
+
+            // The target page may already be cached but detached because the preview was closed
+            // during a scroll. Reattach it without parking the grid at the target first, then let
+            // maybeScrollToCurrentPage animate from the position the user left behind.
+            viewportAnchor = null
+            pendingScrollToCurrent = true
+            if (chapterPages.containsKey(chapterId)) {
+                attachCachedPages(section)
+                savedPreviewAnchor = null
+                animateFromSavedPosition = false
+            } else if (pageSectionShouldLoad(section)) {
+                markPageSectionLoading(section)
+                loadSectionPages(section)
+                savedPreviewAnchor = null
+            } else {
+                savedPreviewAnchor = null
+            }
             return
         }
         markViewportMove(recycler)
@@ -536,7 +585,7 @@ class MangaDetailsAdapter(
         if (recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
         val anchor = viewportAnchor ?: return
         val layoutManager = recycler.layoutManager as? LinearLayoutManager ?: return
-        val position = getGlobalPositionOf(anchor.item)
+        val position = positionOfAnchor(anchor)
         if (position == RecyclerView.NO_POSITION) return
         val top = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
         if (top == null) {
