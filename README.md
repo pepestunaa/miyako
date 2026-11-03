@@ -1,41 +1,48 @@
 <div align="center">
 
 <a href="https://github.com/pepestunaa/miyako">
-    <img src="./.github/readme-images/app-icon.webp" alt="Miyako logo" height="200px" width="200px" />
+    <img src="./.github/readme-images/app-icon.webp" alt="Yōkai app icon" height="200px" width="200px" />
 </a>
 
 # Miyako
 
-A free and open source manga reader for Android
-
-**A personal fork of [Yōkai](https://github.com/null2264/yokai)**
+**A personal fork of [Yōkai](https://github.com/null2264/yokai): lighter, more memory-efficient, and smoother, without changing the app's UI/UX or removing its features.**
 
 [![License: Apache-2.0](https://img.shields.io/github/license/pepestunaa/miyako?labelColor=27303D&color=0877d2)](/LICENSE)
 
-<img src="./.github/readme-images/screens.gif" alt="Yokai screenshots" />
+<img src="./.github/readme-images/screens.gif" alt="Yōkai screenshots" />
 
 </div>
 
+## About This Fork
+
+Miyako is the name of this repository, not a new app. The installed app is still **Yōkai**, and this
+fork keeps its name, look, navigation, gestures, and full feature set. Yōkai itself is a fork of
+[Mihon](https://github.com/mihonapp/mihon), which descends from the original
+[Tachiyomi](https://github.com/tachiyomiorg/tachiyomi).
+
+The fork focuses on three things:
+
+- **Lighter**: trim dependencies and build extras the app does not need.
+- **Lower memory**: cache images on disk and back off reader preloading when memory is tight.
+- **Smoother**: make the manga details page feel fluid, using Usagi's page grid and pages preview as
+  the UX reference.
+
+Nothing from Yōkai is removed. UI changes stay inside the manga details screen, reuse Yōkai's
+existing visual language, and do not introduce new screens or flows.
+
 ## Download
 
-There are no prebuilt releases for this fork yet. Build it from source:
+There are no prebuilt releases for this fork yet. Build the standard flavor from source:
 
 ```sh
 ./gradlew :app:assembleStandardRelease
 ```
 
-Requires Android 8.0 or higher.
-
-## About This Fork
-
-Miyako is a personal fork of [Yōkai](https://github.com/null2264/yokai) maintained by
-[pepestunaa](https://github.com/pepestunaa). Yōkai itself is a fork of
-[Mihon](https://github.com/mihonapp/mihon), which descends from the original
-[Tachiyomi](https://github.com/tachiyomiorg/tachiyomi).
-
-The fork keeps Yōkai's look, navigation, and reading experience. The changes below focus on a
-lighter install, lower memory usage, and smoother manga details — preserving the existing UI/UX
-instead of introducing a new one.
+Requires Android 8.0 or higher. Release APKs are unsigned, so sign them with your own key before
+installing. The standard release shares the same application ID as Yōkai
+(`eu.kanade.tachiyomi.yokai`), so uninstall the official app before installing this one; back up
+your library first.
 
 ## Changes in This Fork
 
@@ -44,28 +51,28 @@ instead of introducing a new one.
 - Removed Firebase Crashlytics/analytics, the Conscrypt TLS provider, QuickJS, `kotlin-reflect`,
   `slice`, and other unused dependencies.
 - Removed the onboarding flow and its entry points.
-- Standard flavor ships English-only resources, with compressed JNI libraries.
-- Replaced `image-decoder` with `libavif` plus the platform decoder.
-- Added disk image caching and skip reader preloading under memory pressure.
+- Standard flavor ships English-only resources and compressed JNI libraries.
+- Replaced `image-decoder` with a libavif-backed AVIF decoder and a platform decoder shim.
+- Added disk image caching; reader preloading backs off in power-save mode or when free RAM is low.
 - Fixed history writes to use update-or-insert instead of upserts.
 - Added a `devAbi` flag and parallel Gradle for quicker local builds.
 
 ### Manga details
 
 - Usagi-style page grid: every chapter expands into its page thumbnails on the details screen.
-- Swipe left on the details screen to open a right-docked pages preview, with a one-time swipe hint
-  on first use.
-- Magnetic swipe: a short swipe or light flick completes opening/closing the preview.
-- The preview anchors and glides to the last-read page.
+- Swipe left on the details screen to slide in a right-docked pages preview, with a one-time swipe
+  hint on first use.
+- Magnetic swipe: a short swipe or light flick completes opening and closing the preview.
+- The preview opens anchored to the last-read page.
 - The preview page marker follows the most recently read chapter, even when reading ahead in a manga
   with many chapters.
 - Top and bottom scrims keep the status bar and navigation area readable over the preview.
-- Chapters and Pages switch with a directional, drag-following swipe, styled like the app's main
-  tabs, and chapter rows keep their original swipe actions.
+- Chapter rows keep their original swipe actions.
+- A back-to-top button appears once the details screen is scrolled down.
 
 ## Features
 
-The fork inherits Yōkai's full feature set.
+Miyako keeps every Yōkai feature; nothing is removed. The feature set comes from Yōkai's lineage:
 
 ### From Yōkai
 
@@ -124,11 +131,13 @@ When reporting an issue on this fork:
 
 ## Credits
 
-This fork exists thanks to the [Yōkai](https://github.com/null2264/yokai) project and everyone who
-contributed to it.
+This fork exists thanks to the [Yōkai](https://github.com/null2264/yokai) project by null2264 and
+everyone who contributed to it. It also builds on the work of
+[Mihon](https://github.com/mihonapp/mihon), [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi),
+and TachiyomiJ2K. The manga details UX takes inspiration from Usagi.
 
 <a href="https://github.com/null2264/yokai/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=null2264/yokai" alt="Yokai app contributors" title="Yokai app contributors" width="600"/>
+    <img src="https://contrib.rocks/image?repo=null2264/yokai" alt="Yōkai app contributors" title="Yōkai app contributors" width="600"/>
 </a>
 
 ## Disclaimer
