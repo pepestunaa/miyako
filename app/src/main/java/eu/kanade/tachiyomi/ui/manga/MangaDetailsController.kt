@@ -450,7 +450,6 @@ class MangaDetailsController :
         )
         binding.fab.setTextColor(ColorStateList(states, textColors))
         binding.scrollToTop.backgroundTintList = ColorStateList(states, colors)
-        binding.scrollToTop.iconTint = ColorStateList(states, textColors)
     }
 
     /** Check if device is tablet, and use a second recycler to hold the details header if so */
@@ -1353,9 +1352,13 @@ class MangaDetailsController :
             binding.scrollToTop.hide()
             return
         }
-        val header = getHeader()
-        val scrolledDown = binding.recycler.canScrollVertically(-1) &&
-            (header == null || header.itemView.bottom <= binding.recycler.paddingTop)
+        // Follow the read FAB's threshold so the two animate in and out together.
+        val headerButtonVisible = getHeader()?.binding?.let {
+            val bound = Rect()
+            binding.recycler.getHitRect(bound)
+            it.startReadingButton.getLocalVisibleRect(bound)
+        } ?: false
+        val scrolledDown = binding.recycler.canScrollVertically(-1) && !headerButtonVisible
         if (scrolledDown) binding.scrollToTop.show() else binding.scrollToTop.hide()
     }
 
