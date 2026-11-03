@@ -2331,8 +2331,10 @@ class MangaDetailsController :
 
         private const val DEFAULT_GRID_SPAN_COUNT = 3
 
-        private const val PANEL_SWIPE_THRESHOLD = 0.28f
-        private const val PANEL_FLING_VELOCITY = 900f
+        // Magnet thresholds: a short swipe or light flick completes, so a missed swipe never
+        // has to be repeated.
+        private const val PANEL_SWIPE_THRESHOLD = 0.12f
+        private const val PANEL_FLING_VELOCITY = 400f
         private const val PANEL_ANIM_MS = 240L
         private const val PANEL_ANIM_MIN_MS = 100L
 
