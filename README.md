@@ -98,6 +98,25 @@ The standard release uses Yōkai's application ID, `eu.kanade.tachiyomi.yokai`. 
 official app first and back up your library before installing this build. Android 8.0 or newer is
 required.
 
+### Development builds
+
+Development happens on the `dev` branch. While iterating, always build the debug variant (never
+`assembleStandardRelease`): it is signed automatically, packages only the target ABI, and skips lint,
+so the whole loop is faster.
+
+```sh
+git checkout dev
+./gradlew :app:assembleStandardDebug -PdevAbi=arm64-v8a --console=plain -x lint
+adb install -r app/build/outputs/apk/standard/debug/app-standard-arm64-v8a-debug.apk
+```
+
+The debug build installs as `eu.kanade.tachiyomi.debugYokai`, alongside the release build. Reserve
+`assembleStandardRelease` for verifying release-only behavior such as minification and resource
+shrinking.
+
+Always build and run the latest APK on a device after a change. A successful compile is not proof
+that the UI works.
+
 ## Contributing and bug reports
 
 Miyako is a personal fork. Fixes that affect upstream should be contributed to

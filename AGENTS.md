@@ -48,19 +48,24 @@ docs: rewrite the README with clean, consistent structure
 
 ## Build dan Verifikasi di Device
 
+Untuk development, selalu pakai build debug (bukan `assembleStandardRelease`):
+
 ```sh
-# Build (sekitar 2-2.5 menit)
-./gradlew :app:assembleStandardRelease -PdevAbi=arm64-v8a --console=plain -x lint
+# Build debug (sekitar 1-2 menit, sudah auto-signed)
+./gradlew :app:assembleStandardDebug -PdevAbi=arm64-v8a --console=plain -x lint
 
 # Output
-app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk
+app/build/outputs/apk/standard/debug/app-standard-arm64-v8a-debug.apk
 ```
 
+- Debug sudah di-sign otomatis dengan debug keystore — langsung `adb install -r`, tanpa zipalign/apksigner.
+- ApplicationId debug: `eu.kanade.tachiyomi.debugYokai`; launcher: `eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy`. Debug dan rilis bisa terpasang berdampingan.
+- `assembleStandardRelease` hanya untuk memverifikasi build rilis (minify/shrink). Output: `app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk`.
 - APK release tidak di-sign otomatis: `zipalign -f 4` lalu `apksigner.bat sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --out ...`.
 - `apksigner` hanya tersedia sebagai `apksigner.bat` di build-tools; gunakan file `.bat`.
 - Pakai path `C:/tmp/...` untuk intermediate APK (bukan `/tmp`, zipalign gagal di sana).
 - Device uji: OPPO CPH1931 (`d89608bf`), 720x1600 @320dpi, Android 10.
-- adb: `~/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
+- adb: `/c/platform-tools/adb.exe`.
 - Install: `adb -s d89608bf install -r <apk>`.
 - Screenshot: `adb -s d89608bf exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
 - Tag logcat untuk panel preview: `YokaiPanel`. Cek crash dengan logcat `FATAL`.
@@ -70,12 +75,12 @@ app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.a
 
 Setiap perubahan fitur/UI wajib melewati audit end-to-end di device fisik sebelum dilaporkan selesai. Urutannya:
 
-1. Build + sign + install build terbaru (lihat bagian sebelumnya).
+1. Build + install build debug terbaru (lihat bagian sebelumnya).
 2. Bersihkan logcat, lalu launch app:
 
    ```sh
    adb -s d89608bf logcat -c
-   adb -s d89608bf shell am start -n eu.kanade.tachiyomi.yokai/.MainActivityDefaultDummy
+   adb -s d89608bf shell am start -n eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy
    ```
 
 3. Uji golden path fitur yang berubah. Contoh untuk panel preview halaman:
