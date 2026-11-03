@@ -1,12 +1,9 @@
 package eu.kanade.tachiyomi.ui.manga
 
-import android.os.SystemClock
 import android.view.ActionMode
 import android.view.View
-import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
 import androidx.core.view.doOnNextLayout
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -24,15 +21,12 @@ import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil
-import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isLTR
 import eu.kanade.tachiyomi.util.system.withUIContext
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.injectLazy
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
-
-private const val GLIDE_MAX_DELAY_MS = 1000L
 
 class MangaDetailsAdapter(
     val controller: MangaDetailsController,
@@ -204,44 +198,9 @@ class MangaDetailsAdapter(
         recycler.post {
             val position = getGlobalPositionOf(item)
             if (position == RecyclerView.NO_POSITION) return@post
-            val layoutManager = recycler.layoutManager as? LinearLayoutManager
-            if (layoutManager == null) {
-                recycler.scrollToPosition(position)
-                return@post
-            }
-            val lead = (position - pageScrollLead()).coerceAtLeast(0)
-            if (lead >= position) {
-                layoutManager.scrollToPositionWithOffset(position, 0)
-                return@post
-            }
-            // Park one grid row above, then glide the page itself into place. smoothScrollToPosition
-            // only makes an item visible, it doesn't align it to the top like we need.
-            layoutManager.scrollToPositionWithOffset(lead, 0)
-            val parkedAt = SystemClock.uptimeMillis()
-            // Measure only once the parked layout has settled; before that the target's top still
-            // reflects the old scroll position and the glide would fall short.
-            recycler.doOnNextLayout {
-                val target = getGlobalPositionOf(item)
-                if (target == RecyclerView.NO_POSITION) return@doOnNextLayout
-                val top = recycler.findViewHolderForAdapterPosition(target)?.itemView?.top
-                    ?: return@doOnNextLayout
-                val dy = top - recycler.paddingTop
-                when {
-                    // Already at (or above) the top: snap silently, a small correction scroll
-                    // reads as a glitch.
-                    dy < 16.dpToPx -> layoutManager.scrollToPositionWithOffset(target, 0)
-                    // The layout arrived long after the park, so the panel has already settled;
-                    // animating at this point would look like a stray scroll.
-                    SystemClock.uptimeMillis() - parkedAt > GLIDE_MAX_DELAY_MS ->
-                        layoutManager.scrollToPositionWithOffset(target, 0)
-                    else -> recycler.smoothScrollBy(
-                        0,
-                        dy,
-                        DecelerateInterpolator(2f),
-                        (dy * 1.2f).coerceIn(300f, 650f).toInt(),
-                    )
-                }
-            }
+            (recycler.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(position, 0)
+                ?: recycler.scrollToPosition(position)
         }
     }
 
@@ -256,9 +215,6 @@ class MangaDetailsAdapter(
             }
         }
     }
-
-    private fun pageScrollLead(): Int =
-        (recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: 3
 
     private fun currentPagePosition(): Int? {
         for (i in 0 until itemCount) {
