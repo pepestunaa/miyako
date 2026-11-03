@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.manga.chapter
 
 import android.view.View
 import androidx.core.content.ContextCompat
+import coil3.Image
 import coil3.imageLoader
 import coil3.request.Disposable
 import coil3.request.ImageRequest
@@ -24,7 +25,15 @@ class ChapterPageHolder(
     private val binding = ChapterPageItemBinding.bind(view)
     private var disposable: Disposable? = null
     private var boundPage: Pair<Long, Int>? = null
+    private var loadedPage: Pair<Long, Int>? = null
     private var boundItem: ChapterPageItem? = null
+
+    private val imageTarget = object : ImageViewTarget(binding.pageImage) {
+        override fun onSuccess(result: Image) {
+            super.onSuccess(result)
+            loadedPage = boundPage
+        }
+    }
 
     private val thumbnailSize: Size by lazy {
         val width = itemView.resources.getDimensionPixelSize(R.dimen.chapter_page_grid_preferred_width)
@@ -46,6 +55,7 @@ class ChapterPageHolder(
         val pageKey = (item.chapter.id ?: 0L) to item.page.index
         if (pageKey != boundPage) {
             boundPage = pageKey
+            loadedPage = null
             disposable?.dispose()
             disposable = null
             binding.pageImage.setImageDrawable(null)
@@ -57,6 +67,8 @@ class ChapterPageHolder(
 
     fun loadImageIfNeeded() {
         if (disposable != null) return
+        // Recycling keeps the drawable, so re-binding the same page must not re-request it.
+        if (loadedPage != null && loadedPage == boundPage && binding.pageImage.drawable != null) return
         // During a fling the grid passes over many chapters; only fetch what stays on screen.
         if (adapter.isFlinging) return
         if (!isOnScreen()) return
@@ -67,7 +79,7 @@ class ChapterPageHolder(
             .data(ChapterPageImage(item.chapter, item.page, source))
             .size(thumbnailSize)
             .scale(Scale.FILL)
-            .target(ImageViewTarget(binding.pageImage))
+            .target(imageTarget)
             .build()
         disposable = context.imageLoader.enqueue(request)
     }
@@ -80,12 +92,15 @@ class ChapterPageHolder(
         return itemView.bottom > top && itemView.top < bottom
     }
 
+    /**
+     * Recycling a thumbnail must not throw its image away: scrolling back up would otherwise
+     * re-fetch and re-decode every page that comes back into view. Only the in-flight request
+     * is cancelled; the drawable stays until the holder is bound to a different page.
+     */
     fun dispose() {
         disposable?.dispose()
         disposable = null
-        boundPage = null
         boundItem = null
-        binding.pageImage.setImageDrawable(null)
     }
 
     companion object {
