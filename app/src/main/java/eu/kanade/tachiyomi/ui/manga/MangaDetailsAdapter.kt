@@ -9,6 +9,7 @@ import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import dev.icerock.moko.resources.StringResource
 import eu.davidea.flexibleadapter.items.IFlexible
@@ -35,8 +36,9 @@ import java.text.DecimalFormatSymbols
 
 private const val GLIDE_MAX_DELAY_MS = 1000L
 private const val INITIAL_BATCH_SIZE = 60
-private const val BATCH_EXTEND_STEP = 60
-private const val BATCH_EXTEND_MARGIN = 20
+private const val INITIAL_PREVIEW_WINDOW = 3
+private const val BATCH_EXTEND_STEP = 12
+private const val BATCH_EXTEND_MARGIN = 4
 
 class MangaDetailsAdapter(
     val controller: MangaDetailsController,
@@ -63,11 +65,22 @@ class MangaDetailsAdapter(
     private var priorityChapterId: Long? = null
     private var viewportMovePending = false
     private var viewportAnchor: ViewportAnchor? = null
-    private var batchSize = INITIAL_BATCH_SIZE
+    private var batchStart = 0
+    private var batchEnd = INITIAL_BATCH_SIZE
+    private var batchFilter = ""
+    private var chapterIndexSource: List<ChapterItem>? = null
+    private var chapterIndexFilter = ""
+    private var chapterIndexById: Map<Long, Int> = emptyMap()
+    private var savedPreviewAnchor: ViewportAnchor? = null
+    private var animateFromSavedPosition = false
 
     private val batchScrollListener = object : RecyclerView.OnScrollListener() {
         override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
             extendBatchIfNeeded()
+        }
+
+        override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+            if (newState == RecyclerView.SCROLL_STATE_IDLE) extendBatchIfNeeded()
         }
     }
 
@@ -87,26 +100,98 @@ class MangaDetailsAdapter(
      * only controls what the list shows, and grows as the user reaches the end.
      */
     private fun batchedItems(): List<ChapterItem> {
+        syncBatchFilter()
         val all = filteredItems()
-        return if (all.size <= batchSize) all else all.take(batchSize)
+        normalizeBatchWindow(all)
+        return all.subList(batchStart, batchEnd)
     }
 
     private fun extendBatchIfNeeded() {
+        syncBatchFilter()
         val all = filteredItems()
-        if (batchSize >= all.size) return
+        normalizeBatchWindow(all)
+        updateChapterIndex(all)
+        if (batchStart == 0 && batchEnd == all.size) return
         val lm = recyclerView?.layoutManager as? LinearLayoutManager ?: return
+        if (recyclerView?.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
+        val firstVisible = lm.findFirstVisibleItemPosition()
         val lastVisible = lm.findLastVisibleItemPosition()
-        if (lastVisible == RecyclerView.NO_POSITION) return
-        if (lastVisible < currentItems.size - BATCH_EXTEND_MARGIN) return
-        batchSize = (batchSize + BATCH_EXTEND_STEP).coerceAtMost(all.size)
+        if (firstVisible == RecyclerView.NO_POSITION || lastVisible == RecyclerView.NO_POSITION) return
+
+        val firstChapter = visibleChapterIndex(firstVisible, lastVisible, fromStart = true)
+        val lastChapter = visibleChapterIndex(firstVisible, lastVisible, fromStart = false)
+        val extendBefore = batchStart > 0 && firstChapter != null &&
+            firstChapter <= batchStart + BATCH_EXTEND_MARGIN
+        val extendAfter = batchEnd < all.size && lastChapter != null &&
+            lastChapter >= batchEnd - BATCH_EXTEND_MARGIN
+        if (!extendBefore && !extendAfter) return
+
+        if (extendBefore) batchStart = (batchStart - BATCH_EXTEND_STEP).coerceAtLeast(0)
+        if (extendAfter) batchEnd = (batchEnd + BATCH_EXTEND_STEP).coerceAtMost(all.size)
         if (pageGridMode) rebuildPageGrid() else performFilter()
     }
 
+    private fun visibleChapterIndex(
+        firstVisible: Int,
+        lastVisible: Int,
+        fromStart: Boolean,
+    ): Int? {
+        val positions = if (fromStart) firstVisible..lastVisible else lastVisible downTo firstVisible
+        return positions.firstNotNullOfOrNull { position ->
+            val chapterId = when (val item = getItem(position)) {
+                is ChapterItem -> item.chapter.id
+                is ChapterPagesSectionItem -> item.chapter.id
+                is ChapterPageItem -> item.chapter.id
+                else -> null
+            }
+            chapterId?.let { chapterIndexById[it] }
+        }
+    }
+
+    private fun updateChapterIndex(all: List<ChapterItem>) {
+        val filter = getFilter(String::class.java).orEmpty()
+        if (chapterIndexSource === items && chapterIndexFilter == filter) return
+        chapterIndexSource = items
+        chapterIndexFilter = filter
+        chapterIndexById = all.mapIndexed { index, item -> item.chapter.id to index }
+            .filter { it.first != null }
+            .associate { it.first!! to it.second }
+    }
+
+    private fun normalizeBatchWindow(all: List<ChapterItem>) {
+        if (all.isEmpty()) {
+            batchStart = 0
+            batchEnd = 0
+            return
+        }
+        batchStart = batchStart.coerceIn(0, all.lastIndex)
+        batchEnd = batchEnd.coerceIn(batchStart + 1, all.size)
+    }
+
+    private fun syncBatchFilter() {
+        val filter = getFilter(String::class.java).orEmpty()
+        if (filter == batchFilter) return
+        batchFilter = filter
+        resetBatchWindow()
+        chapterIndexSource = null
+    }
+
+    private fun resetBatchWindow() {
+        batchStart = 0
+        batchEnd = if (pageGridMode) INITIAL_PREVIEW_WINDOW else INITIAL_BATCH_SIZE
+    }
+
     private fun ensureChapterInBatch(chapterId: Long) {
+        syncBatchFilter()
         val all = filteredItems()
         val index = all.indexOfFirst { it.chapter.id == chapterId }
-        if (index == -1 || index < batchSize) return
-        batchSize = (index + 1).coerceAtMost(all.size)
+        if (index == -1) return
+        normalizeBatchWindow(all)
+        if (index in batchStart until batchEnd) return
+
+        batchStart = (index - INITIAL_PREVIEW_WINDOW / 2).coerceAtLeast(0)
+        batchEnd = (batchStart + INITIAL_PREVIEW_WINDOW).coerceAtMost(all.size)
+        batchStart = (batchEnd - INITIAL_PREVIEW_WINDOW).coerceAtLeast(0)
         if (pageGridMode) rebuildPageGrid() else performFilter()
     }
 
@@ -121,6 +206,7 @@ class MangaDetailsAdapter(
 
     fun setChapters(items: List<ChapterItem>?) {
         this.items = items ?: emptyList()
+        chapterIndexSource = null
         if (pageGridMode) {
             rebuildPageGrid()
             // The panel may have opened before history loaded; re-anchor now that it has.
@@ -135,6 +221,7 @@ class MangaDetailsAdapter(
     fun setPageGridMode(enabled: Boolean) {
         if (pageGridMode == enabled) return
         pageGridMode = enabled
+        resetBatchWindow()
         rebuildPageGrid()
     }
 
@@ -155,7 +242,7 @@ class MangaDetailsAdapter(
                 else -> section.state
             }
             section.pageCount = chapterPages[chapterId]?.size ?: 0
-            section.pagesAttached = chapterPages.containsKey(chapterId)
+            if (!chapterPages.containsKey(chapterId)) section.pagesAttached = false
             gridItems.add(section)
             chapterPages[chapterId]?.forEach { page ->
                 gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
@@ -265,6 +352,10 @@ class MangaDetailsAdapter(
     fun scrollToCurrentPage() {
         if (!pageGridMode) return
         val recycler = recyclerView ?: return
+        savedPreviewAnchor?.let {
+            viewportAnchor = it
+            animateFromSavedPosition = true
+        }
         refreshCurrentPage()
         // A chapter without a page marker still sits somewhere in the grid: a finished chapter,
         // or one left at page 0, has to open on itself instead of at the very top of the list.
@@ -282,12 +373,18 @@ class MangaDetailsAdapter(
         }
         // Fetch the last-read chapter's page list before any other section gets a chance.
         priorityChapterId = if (chapterPages.containsKey(chapterId)) null else chapterId
-        // The anchor target may sit past the submitted batch; grow the batch to include it.
+        // The anchor target may sit outside the current viewport window; move the window around it
+        // instead of submitting every chapter before the target.
         ensureChapterInBatch(chapterId)
         val pagePosition = currentPagePosition()
         if (pagePosition != null) {
             pendingScrollToCurrent = false
-            anchorToCurrentPage(getItem(pagePosition) as? ChapterPageItem)
+            anchorToCurrentPage(
+                getItem(pagePosition) as? ChapterPageItem,
+                animateFromSavedPosition,
+            )
+            savedPreviewAnchor = null
+            animateFromSavedPosition = false
             return
         }
         // The current chapter's thumbnails may not be loaded yet: park on its section and
@@ -312,7 +409,7 @@ class MangaDetailsAdapter(
         viewportAnchor = null
     }
 
-    private fun anchorToCurrentPage(item: ChapterPageItem?) {
+    private fun anchorToCurrentPage(item: ChapterPageItem?, animateFromSaved: Boolean = false) {
         if (item == null) return
         val recycler = recyclerView ?: return
         // Nothing may pin the grid while the target is being resolved: a load that lands in this
@@ -324,20 +421,29 @@ class MangaDetailsAdapter(
         // attach their thumbnails later and shift every index below them.
         recycler.post {
             try {
-                anchorOnto(item, recycler)
+                anchorOnto(item, recycler, animateFromSaved)
             } finally {
                 viewportMovePending = false
             }
         }
     }
 
-    private fun anchorOnto(item: ChapterPageItem, recycler: RecyclerView) {
+    private fun anchorOnto(
+        item: ChapterPageItem,
+        recycler: RecyclerView,
+        animateFromSaved: Boolean = false,
+    ) {
         val position = getGlobalPositionOf(item)
         if (position == RecyclerView.NO_POSITION) return
         val layoutManager = recycler.layoutManager as? LinearLayoutManager
         if (layoutManager == null) {
             claimAnchor(item)
             recycler.scrollToPosition(position)
+            return
+        }
+        if (animateFromSaved) {
+            claimAnchor(item)
+            animateToPosition(recycler, position)
             return
         }
         // When the page is already laid out nearby, glide straight from the current
@@ -401,6 +507,22 @@ class MangaDetailsAdapter(
         // Standard easing starts and ends at rest, so the glide doesn't read as a dart.
         val duration = (dy * 1.4f).coerceIn(320f, 700f).toInt()
         recycler.smoothScrollBy(0, dy, PathInterpolator(0.4f, 0f, 0.2f, 1f), duration)
+    }
+
+    private fun animateToPosition(recycler: RecyclerView, position: Int) {
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager ?: return
+        markViewportMove(recycler)
+        val scroller = object : LinearSmoothScroller(recycler.context) {
+            override fun getVerticalSnapPreference(): Int = SNAP_TO_START
+
+            override fun calculateTimeForScrolling(dx: Int): Int {
+                return (super.calculateTimeForScrolling(dx) * 1.25f)
+                    .toInt()
+                    .coerceAtMost(1800)
+            }
+        }
+        scroller.targetPosition = position
+        layoutManager.startSmoothScroll(scroller)
     }
 
     private fun pageScrollLead(): Int =
@@ -473,7 +595,12 @@ class MangaDetailsAdapter(
         if (!pendingScrollToCurrent || currentPage?.first != chapterId) return
         pendingScrollToCurrent = false
         val position = currentPagePosition() ?: return
-        anchorToCurrentPage(getItem(position) as? ChapterPageItem)
+        anchorToCurrentPage(
+            getItem(position) as? ChapterPageItem,
+            animateFromSavedPosition,
+        )
+        savedPreviewAnchor = null
+        animateFromSavedPosition = false
     }
 
     private fun loadSectionPages(section: ChapterPagesSectionItem) {
@@ -552,6 +679,11 @@ class MangaDetailsAdapter(
             section.pagesAttached = true
             maybeScrollToCurrentPage(chapterId)
         }
+    }
+
+    fun savePreviewPosition() {
+        val recycler = recyclerView ?: return
+        savedPreviewAnchor = captureTopRow(recycler)
     }
 
     private fun insertPageItems(

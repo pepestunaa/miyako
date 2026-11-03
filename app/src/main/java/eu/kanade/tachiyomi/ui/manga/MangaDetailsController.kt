@@ -151,7 +151,6 @@ import java.io.File
 import java.io.IOException
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.coroutines.launch
@@ -238,6 +237,7 @@ class MangaDetailsController :
     private var hintScheduled = false
     private var hintAnimating = false
     private var previewWarmed = false
+    private var lastToolbarTitleAlpha: Int? = null
 
     private var actionMode: ActionMode? = null
 
@@ -256,6 +256,7 @@ class MangaDetailsController :
     //region UI Methods
     override fun onViewCreated(view: View) {
         super.onViewCreated(view)
+        lastToolbarTitleAlpha = null
         coverColor = null
         fullCoverActive = false
         setAccentColorValue()
@@ -501,6 +502,7 @@ class MangaDetailsController :
         hintScheduled = false
         hintAnimating = false
         previewWarmed = false
+        lastToolbarTitleAlpha = null
         gridSpanResolver = null
         finishFloatingActionMode()
         trackingBottomSheet = null
@@ -562,17 +564,13 @@ class MangaDetailsController :
                     super.onScrolled(recyclerView, dx, dy)
                     if (!isTablet) {
                         updateToolbarTitleAlpha(isScrollingDown = dy > 0 && !binding.root.context.isTablet())
-                        val atTop = !recyclerView.canScrollVertically(-1)
-                        val tY = getHeader()?.binding?.backdrop?.translationY ?: 0f
-                        getHeader()?.binding?.backdrop?.translationY = max(0f, tY + dy * 0.25f)
-                        if (atTop) getHeader()?.binding?.backdrop?.translationY = 0f
+                        updateHeaderParallax()
                     }
                 }
 
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    val atTop = !recyclerView.canScrollVertically(-1)
                     updateToolbarTitleAlpha()
-                    if (atTop) getHeader()?.binding?.backdrop?.translationY = 0f
+                    updateHeaderParallax()
                 }
             },
         )
@@ -632,6 +630,23 @@ class MangaDetailsController :
                 }
             },
         )
+    }
+
+    /**
+     * Derive the backdrop offset from the header's actual position instead of accumulating every
+     * scroll delta. App-bar settling and RecyclerView corrections can emit opposing deltas in one
+     * frame; accumulating them made the image stutter when the detail page was dragged back up.
+     */
+    private fun updateHeaderParallax() {
+        if (isTablet) return
+        val recycler = binding.recycler
+        val header = getHeader() ?: return
+        val backdrop = header.binding?.backdrop ?: return
+        val distance = (recycler.paddingTop - header.itemView.top).coerceAtLeast(0)
+        val translation = distance * HEADER_PARALLAX_FACTOR
+        if (abs(backdrop.translationY - translation) > 0.5f) {
+            backdrop.translationY = translation
+        }
     }
 
     private fun setupPanelSwipe(recycler: RecyclerView, opensPanel: Boolean) {
@@ -953,6 +968,7 @@ class MangaDetailsController :
 
     private fun onPreviewClosed() {
         previewOpen = false
+        previewAdapter?.savePreviewPosition()
         previewAdapter?.cancelPendingScroll()
         binding.pagesPreviewRecycler.visibility = View.GONE
         hidePreviewScrims()
@@ -1958,7 +1974,10 @@ class MangaDetailsController :
             else -> (scrolledList.computeVerticalScrollOffset() - (20.dpToPx))
                 .coerceIn(0, 255) / 255f
         }
-        toolbarTextView.setTextColorAlpha((tbAlpha * 255).roundToInt())
+        val newAlpha = (tbAlpha * 255).roundToInt()
+        if (lastToolbarTitleAlpha == newAlpha) return
+        lastToolbarTitleAlpha = newAlpha
+        toolbarTextView.setTextColorAlpha(newAlpha)
     }
 
     private fun downloadChapters(choice: Int) {
@@ -2007,8 +2026,8 @@ class MangaDetailsController :
     // In case the recycler is at the bottom and collapsing the header makes it unscrollable
     override fun updateScroll() {
         updateToolbarTitleAlpha()
+        updateHeaderParallax()
         if (!binding.recycler.canScrollVertically(-1)) {
-            getHeader()?.binding?.backdrop?.translationY = 0f
             activityBinding?.appBar?.y = 0f
             colorToolbar(isColor = false, animate = false)
         }
@@ -2471,6 +2490,7 @@ class MangaDetailsController :
         const val FROM_CATALOGUE_EXTRA = "from_catalogue"
 
         private const val DEFAULT_GRID_SPAN_COUNT = 3
+        private const val HEADER_PARALLAX_FACTOR = 0.25f
 
         // Magnet thresholds: even a short swipe or light flick completes, so a missed swipe
         // never has to be repeated.
