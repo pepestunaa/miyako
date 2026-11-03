@@ -34,6 +34,9 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
 private const val GLIDE_MAX_DELAY_MS = 1000L
+private const val INITIAL_BATCH_SIZE = 60
+private const val BATCH_EXTEND_STEP = 60
+private const val BATCH_EXTEND_MARGIN = 20
 
 class MangaDetailsAdapter(
     val controller: MangaDetailsController,
@@ -58,6 +61,52 @@ class MangaDetailsAdapter(
     private var pendingScrollToCurrent = false
     private var autoScrollTarget: ChapterPageItem? = null
     private var priorityChapterId: Long? = null
+    private var batchSize = INITIAL_BATCH_SIZE
+
+    private val batchScrollListener = object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+            extendBatchIfNeeded()
+        }
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        recyclerView.addOnScrollListener(batchScrollListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        recyclerView.removeOnScrollListener(batchScrollListener)
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
+
+    /**
+     * Submit chapters in batches so opening a manga with hundreds of rows doesn't hand the
+     * whole dataset to RecyclerView at once. Data stays complete in the presenter; the batch
+     * only controls what the list shows, and grows as the user reaches the end.
+     */
+    private fun batchedItems(): List<ChapterItem> {
+        val all = filteredItems()
+        return if (all.size <= batchSize) all else all.take(batchSize)
+    }
+
+    private fun extendBatchIfNeeded() {
+        val all = filteredItems()
+        if (batchSize >= all.size) return
+        val lm = recyclerView?.layoutManager as? LinearLayoutManager ?: return
+        val lastVisible = lm.findLastVisibleItemPosition()
+        if (lastVisible == RecyclerView.NO_POSITION) return
+        if (lastVisible < currentItems.size - BATCH_EXTEND_MARGIN) return
+        batchSize = (batchSize + BATCH_EXTEND_STEP).coerceAtMost(all.size)
+        if (pageGridMode) rebuildPageGrid() else performFilter()
+    }
+
+    private fun ensureChapterInBatch(chapterId: Long) {
+        val all = filteredItems()
+        val index = all.indexOfFirst { it.chapter.id == chapterId }
+        if (index == -1 || index < batchSize) return
+        batchSize = (index + 1).coerceAtMost(all.size)
+        if (pageGridMode) rebuildPageGrid() else performFilter()
+    }
 
     val delegate: MangaDetailsInterface = controller
     val presenter = controller.presenter
@@ -94,7 +143,7 @@ class MangaDetailsAdapter(
         }
         refreshCurrentPage()
         val gridItems = mutableListOf<IFlexible<*>>()
-        for (chapterItem in filteredItems()) {
+        for (chapterItem in batchedItems()) {
             val chapter = chapterItem.chapter
             val chapterId = chapter.id ?: continue
             val section = pageSections.getOrPut(chapterId) { ChapterPagesSectionItem(chapter) }
@@ -185,6 +234,8 @@ class MangaDetailsAdapter(
         }
         // Fetch the last-read chapter's page list before any other section gets a chance.
         priorityChapterId = if (chapterPages.containsKey(chapterId)) null else chapterId
+        // The anchor target may sit past the submitted batch; grow the batch to include it.
+        ensureChapterInBatch(chapterId)
         val pagePosition = currentPagePosition()
         if (pagePosition != null) {
             pendingScrollToCurrent = false
@@ -498,7 +549,7 @@ class MangaDetailsAdapter(
             rebuildPageGrid()
             return
         }
-        updateItems(filteredItems())
+        updateItems(batchedItems())
     }
 
     override fun onItemSwiped(position: Int, direction: Int) {
