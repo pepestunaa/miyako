@@ -17,7 +17,7 @@ Aturan dan konvensi kerja untuk siapa pun (manusia atau agent) yang mengerjakan 
 4. **Pertahankan UI/UX Yōkai.** Ada larangan keras membuat UI/UX baru yang bertentangan dengan UI/UX Yōkai. Perubahan harus terasa seperti bagian asli dari app (styling, navigasi, gesture, animasi).
 5. **Jangan membuang fungsi atau fitur yang sudah ada.** Refactor diperbolehkan selama perilaku dan fitur tetap utuh.
 6. **Push hanya ke remote `miyako`** (`https://github.com/pepestunaa/miyako`). Remote `origin` adalah upstream (`null2264/yokai`) — jangan pernah push ke sana.
-7. **Sinkronkan `main` dan `master`**: setelah perubahan di-push ke `main`, fast-forward `master` ke `main` dan push `master` juga.
+7. **Sinkronkan `dev` dan `master`**: setelah perubahan di-push ke `dev`, fast-forward `master` ke `dev` dan push `master` juga.
 8. **Jangan lakukan operasi git destruktif tanpa izin eksplisit** (force push, `reset --hard`, hapus branch, `clean -f`). Commit baru selalu lebih baik daripada amend.
 
 ## Alur Kerja
@@ -25,7 +25,7 @@ Aturan dan konvensi kerja untuk siapa pun (manusia atau agent) yang mengerjakan 
 1. Baca `todo.md`, cek `git status`, dan pahami kode terkait sebelum mengubah apa pun.
 2. Implementasi seminimal mungkin dan fokus pada item yang dikerjakan — tanpa refactor atau abstraksi yang tidak diminta.
 3. Build, install ke device, dan uji manual fitur yang berubah (lihat bagian **Audit E2E**). Compile sukses bukan bukti fitur berjalan.
-4. Commit per topik (lihat konvensi di bawah), lalu check off item todo (tanpa catatan), lalu push `main` + `master`.
+4. Commit per topik (lihat konvensi di bawah), lalu check off item todo (tanpa catatan), lalu push `dev` + `master`.
 5. Laporkan hasil singkat di akhir: apa yang berubah, commit hash, dan hasil verifikasi.
 
 ## Commit Convention
