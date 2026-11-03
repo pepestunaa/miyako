@@ -58,6 +58,7 @@ class MangaDetailsAdapter(
     private val pageSections = HashMap<Long, ChapterPagesSectionItem>()
     private val chapterPages = HashMap<Long, List<Page>>()
     private var currentPage: Pair<Long, Int>? = null
+    private var anchorChapterId: Long? = null
     private var pendingScrollToCurrent = false
     private var autoScrollTarget: ChapterPageItem? = null
     private var priorityChapterId: Long? = null
@@ -223,7 +224,9 @@ class MangaDetailsAdapter(
         if (!pageGridMode) return
         val recycler = recyclerView ?: return
         refreshCurrentPage()
-        val chapterId = currentPage?.first
+        // A chapter without a page marker still sits somewhere in the grid: a finished chapter,
+        // or one left at page 0, has to open on itself instead of at the very top of the list.
+        val chapterId = currentPage?.first ?: anchorChapterId
         if (chapterId == null) {
             // History may still be loading: keep waiting so a later refresh can anchor.
             priorityChapterId = null
@@ -243,8 +246,9 @@ class MangaDetailsAdapter(
             return
         }
         // The current chapter's thumbnails may not be loaded yet: park on its section and
-        // jump to the page itself once they attach.
-        pendingScrollToCurrent = true
+        // jump to the page itself once they attach. Without a page marker the section is
+        // already the destination, so there is nothing left to wait for.
+        pendingScrollToCurrent = currentPage != null
         autoScrollTarget = null
         val sectionPosition = sectionPositionOf(chapterId)
         if (sectionPosition == null) {
@@ -299,7 +303,12 @@ class MangaDetailsAdapter(
                 val target = getGlobalPositionOf(item)
                 if (target == RecyclerView.NO_POSITION) return@doOnNextLayout
                 val top = recycler.findViewHolderForAdapterPosition(target)?.itemView?.top
-                    ?: return@doOnNextLayout
+                if (top == null) {
+                    // Content above the park grew while it was pending, so the page is off screen
+                    // again: land on it directly rather than parking one more time.
+                    layoutManager.scrollToPositionWithOffset(target, 0)
+                    return@doOnNextLayout
+                }
                 val dy = top - recycler.paddingTop
                 when {
                     // Already at (or above) the top: snap silently, a small correction scroll
@@ -515,6 +524,7 @@ class MangaDetailsAdapter(
             else -> null
         }
         val chapterId = chapter?.id
+        anchorChapterId = chapterId
         currentPage = if (chapterId != null && !chapter.read && chapter.last_page_read > 0) {
             chapterId to chapter.last_page_read
         } else {
