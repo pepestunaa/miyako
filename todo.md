@@ -18,7 +18,9 @@ ketika di click, intinya aku mau smooth dan mulus aja lah ga ada yang namanya me
 git clone terlebih dahulu dan pahami halaman detailnya jika memungkinkan
 - [x] buat halaman preview muncul dari kanan yang berarti leftswipe dan berikan tambahan untuk langsung scroll atau menampilkan halaman mana yang terakhir di baca di pages preview
 - [x] kasih tau juga ke user kalo halaman detail bisa di swipe dengan memberikan sedikit semacam snapshot seperti Affordance Animation pada saat pertama kali membukanya seperti kalo kamu tau tiktok ketika penggunananya pertama kali membuaka tiktok akan memberi tahu kalo ini tuh bisa di scroll seperti itu animasinya
-- [] berikan animasi pada saat scroll di preview ketika menampilkan halaman terakhir yang di baca
-- [] untuk scroll ke halaman terakhir yang di baca di preview masih belum berhasil dan selalu tampilkan di posisi atas 
-- [] di halaman preview tambahkan semacam efek untuk bagian atas dan bawah tampilan di layar agar bagian atas seperti jam baterai dari hp masih terbaca
-- [] pada saat swipe berikan effect magnet agar tidak perlu mencoba swipe berulang2 ketika swipe gagal di lakukan 
+- [x] berikan animasi pada saat scroll di preview ketika menampilkan halaman terakhir yang di baca
+- [x] untuk scroll ke halaman terakhir yang di baca di preview masih belum berhasil dan selalu tampilkan di posisi atas 
+- [x] di halaman preview tambahkan semacam efek untuk bagian atas dan bawah tampilan di layar agar bagian atas seperti jam baterai dari hp masih terbaca
+- [x] pada saat swipe berikan effect magnet agar tidak perlu mencoba swipe berulang2 ketika swipe gagal di lakukan 
+- [x] fix ketika halaman terakhir di baca sudah di atas masih ada animasi sedikit scorll yang agak glitch
+- [x] animasi scroll di preview page masih kurang smooth
