@@ -57,6 +57,7 @@ class MangaDetailsAdapter(
     private var currentPage: Pair<Long, Int>? = null
     private var pendingScrollToCurrent = false
     private var autoScrollTarget: ChapterPageItem? = null
+    private var priorityChapterId: Long? = null
 
     val delegate: MangaDetailsInterface = controller
     val presenter = controller.presenter
@@ -142,6 +143,10 @@ class MangaDetailsAdapter(
         if (isScrolling) return
         attachCachedPages(section)
         if (!pageSectionShouldLoad(section)) return
+        // Hold back other chapters while the last-read one is still fetching: the panel anchors
+        // there, and its thumbnails are the first the user actually sees.
+        val priority = priorityChapterId
+        if (priority != null && section.chapter.id != priority) return
         markPageSectionLoading(section)
         loadSectionPages(section)
     }
@@ -172,11 +177,14 @@ class MangaDetailsAdapter(
         val chapterId = currentPage?.first
         if (chapterId == null) {
             // History may still be loading: keep waiting so a later refresh can anchor.
+            priorityChapterId = null
             pendingScrollToCurrent = !presenter.historyLoaded
             autoScrollTarget = null
             if (presenter.historyLoaded) recycler.scrollToPosition(0)
             return
         }
+        // Fetch the last-read chapter's page list before any other section gets a chance.
+        priorityChapterId = if (chapterPages.containsKey(chapterId)) null else chapterId
         val pagePosition = currentPagePosition()
         if (pagePosition != null) {
             pendingScrollToCurrent = false
@@ -187,10 +195,13 @@ class MangaDetailsAdapter(
         // jump to the page itself once they attach.
         pendingScrollToCurrent = true
         autoScrollTarget = null
-        sectionPositionOf(chapterId)?.let { position ->
-            recycler.scrollToPosition(position)
-            (getItem(position) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
+        val sectionPosition = sectionPositionOf(chapterId)
+        if (sectionPosition == null) {
+            priorityChapterId = null
+            return
         }
+        recycler.scrollToPosition(sectionPosition)
+        (getItem(sectionPosition) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
     }
 
     fun cancelPendingScroll() {
@@ -319,6 +330,10 @@ class MangaDetailsAdapter(
     ) {
         val chapterId = section.chapter.id ?: return
         if (pages == null) {
+            if (chapterId == priorityChapterId) {
+                priorityChapterId = null
+                loadVisiblePageSections()
+            }
             section.state = ChapterPagesSectionItem.State.Error
             section.refreshBoundHolder()
             return
@@ -342,6 +357,10 @@ class MangaDetailsAdapter(
             else -> section.pagesAttached = false
         }
         section.refreshBoundHolder()
+        if (chapterId == priorityChapterId) {
+            priorityChapterId = null
+            loadVisiblePageSections()
+        }
     }
 
     fun attachCachedPages(section: ChapterPagesSectionItem) {
