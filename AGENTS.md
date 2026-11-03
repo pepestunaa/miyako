@@ -37,13 +37,13 @@ feat(Manga): glide the preview to the last-read page
 fix(Manga): anchor the preview marker to the most recently read chapter
 perf(app): cache images on disk and skip reader preload under memory pressure
 build: add devAbi flag and parallel Gradle for faster builds
-docs(todo): check off the preview marker and magnet tasks
+docs: document the preview gesture and lazy thumbnails
 docs: rewrite the README with clean, consistent structure
 ```
 
 - Subject maksimal ~50 karakter, menjelaskan *apa*.
 - Body (jika perlu) menjelaskan *kenapa*, bukan *bagaimana*.
-- Perubahan pada `todo.md` selalu commit terpisah dengan prefix `docs(todo):`.
+- `todo.md` hanya file lokal: sudah di-ignore dan tidak dilacak git, jadi jangan commit file itu.
 - Satu commit = satu topik logis; file-file terkait satu perbaikan boleh digabung.
 
 ## Build dan Verifikasi di Device
