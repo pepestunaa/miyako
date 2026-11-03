@@ -237,6 +237,7 @@ class MangaDetailsController :
     private var swipeAnimating = false
     private var hintScheduled = false
     private var hintAnimating = false
+    private var previewWarmed = false
 
     private var actionMode: ActionMode? = null
 
@@ -499,6 +500,7 @@ class MangaDetailsController :
         swipeAnimating = false
         hintScheduled = false
         hintAnimating = false
+        previewWarmed = false
         gridSpanResolver = null
         finishFloatingActionMode()
         trackingBottomSheet = null
@@ -806,6 +808,36 @@ class MangaDetailsController :
         if ((previewAdapter?.itemCount ?: 0) == 0) return
         hintScheduled = true
         view.postDelayed({ showSwipeHint() }, PANEL_HINT_DELAY_MS)
+    }
+
+    private fun prewarmPreviewPanel() {
+        if (previewWarmed || isTablet) return
+        val view = view ?: return
+        if ((previewAdapter?.itemCount ?: 0) == 0) return
+        // Warm off-screen once (after the hint) so the first swipe only translates a grid
+        // that is already laid out and anchored instead of inflating it mid-drag.
+        view.postDelayed({
+            val adapter = previewAdapter ?: return@postDelayed
+            val panel = binding.pagesPreviewRecycler
+            if (previewWarmed || previewOpen || hintAnimating || swipeAnimating) return@postDelayed
+            if (panel.visibility == View.VISIBLE) return@postDelayed
+            val width = binding.recycler.width.toFloat()
+            if (width <= 0f) return@postDelayed
+            previewWarmed = true
+            panel.translationX = width
+            panel.visibility = View.VISIBLE
+            adapter.scrollToCurrentPage()
+            panel.post {
+                adapter.loadVisiblePageSections()
+                panel.postDelayed({
+                    if (!previewOpen && !hintAnimating && !swipeAnimating &&
+                        panel.translationX >= width
+                    ) {
+                        panel.visibility = View.GONE
+                    }
+                }, PANEL_WARM_SETTLE_MS)
+            }
+        }, PANEL_WARM_DELAY_MS)
     }
 
     private fun showSwipeHint() {
@@ -1395,6 +1427,7 @@ class MangaDetailsController :
         colorToolbar(binding.recycler.canScrollVertically(-1))
         updateMenuVisibility(activityBinding?.toolbar?.menu)
         scheduleSwipeHint()
+        prewarmPreviewPanel()
     }
 
     private fun addMangaHeader() {
@@ -2449,6 +2482,8 @@ class MangaDetailsController :
         private const val SCROLL_TO_TOP_JUMP_THRESHOLD = 30
 
         private const val PANEL_HINT_DELAY_MS = 700L
+        private const val PANEL_WARM_DELAY_MS = 1600L
+        private const val PANEL_WARM_SETTLE_MS = 500L
         private const val PANEL_HINT_PEEK = 0.18f
         private const val PANEL_HINT_IN_MS = 320L
         private const val PANEL_HINT_HOLD_MS = 180L
