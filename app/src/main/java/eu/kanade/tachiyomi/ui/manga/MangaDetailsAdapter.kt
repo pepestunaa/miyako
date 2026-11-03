@@ -70,6 +70,10 @@ class MangaDetailsAdapter(
         this.items = items ?: emptyList()
         if (pageGridMode) {
             rebuildPageGrid()
+            // The panel may have opened before history loaded; re-anchor now that it has.
+            if (pendingScrollToCurrent && presenter.historyLoaded) {
+                scrollToCurrentPage()
+            }
         } else {
             performFilter()
         }
@@ -165,9 +169,10 @@ class MangaDetailsAdapter(
         refreshCurrentPage()
         val chapterId = currentPage?.first
         if (chapterId == null) {
-            pendingScrollToCurrent = false
+            // History may still be loading: keep waiting so a later refresh can anchor.
+            pendingScrollToCurrent = !presenter.historyLoaded
             autoScrollTarget = null
-            recycler.scrollToPosition(0)
+            if (presenter.historyLoaded) recycler.scrollToPosition(0)
             return
         }
         val pagePosition = currentPagePosition()
@@ -411,7 +416,17 @@ class MangaDetailsAdapter(
     }
 
     private fun refreshCurrentPage() {
-        val chapter = presenter.getNextUnreadChapter()?.chapter
+        // Follow the most recently read chapter instead of the next unread one: reading ahead
+        // must not leave the marker on an older chapter that was never finished.
+        val lastRead = presenter.allHistory.maxByOrNull { it.last_read }
+        val chapter = when {
+            lastRead != null ->
+                presenter.chapters.firstOrNull { it.chapter.id == lastRead.chapter_id }?.chapter
+            // Before history arrives the next unread chapter may be an old partial one, so
+            // don't guess; fall back only when history is known to be empty.
+            presenter.historyLoaded -> presenter.getNextUnreadChapter()?.chapter
+            else -> null
+        }
         val chapterId = chapter?.id
         currentPage = if (chapterId != null && !chapter.read && chapter.last_page_read > 0) {
             chapterId to chapter.last_page_read

@@ -175,6 +175,9 @@ class MangaDetailsPresenter(
     var allHistory: List<History> = emptyList()
         private set
 
+    var historyLoaded = false
+        private set
+
     val headerItem: MangaHeaderItem by lazy { MangaHeaderItem(mangaId, view?.fromCatalogue == true)}
     var tabletChapterHeaderItem: MangaHeaderItem? = null
         get() {
@@ -274,9 +277,11 @@ class MangaDetailsPresenter(
     fun fetchChapters(andTracking: Boolean = true) {
         presenterScope.launch {
             getChapters()
-            if (andTracking) fetchTracks()
-            withUIContext { view?.updateChapters() }
+            // Refresh history before the adapter rebuilds so the preview marker uses fresh data;
+            // tracking fetches hit the network and must not delay that.
             getHistory()
+            withUIContext { view?.updateChapters() }
+            if (andTracking) fetchTracks()
         }
     }
 
@@ -301,6 +306,9 @@ class MangaDetailsPresenter(
 
     suspend fun getChaptersNow(): List<ChapterItem> {
         getChapters()
+        // Keep history fresh: the detail adapter picks the preview marker from it after returning
+        // from the reader.
+        getHistory()
         return chapters
     }
 
@@ -317,6 +325,7 @@ class MangaDetailsPresenter(
 
     private suspend fun getHistory() {
         allHistory = getHistory.awaitAllByMangaId(mangaId)
+        historyLoaded = true
     }
 
     /**
