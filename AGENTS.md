@@ -24,7 +24,7 @@ Aturan dan konvensi kerja untuk siapa pun (manusia atau agent) yang mengerjakan 
 
 1. Baca `todo.md`, cek `git status`, dan pahami kode terkait sebelum mengubah apa pun.
 2. Implementasi seminimal mungkin dan fokus pada item yang dikerjakan — tanpa refactor atau abstraksi yang tidak diminta.
-3. Build, install ke device, dan uji manual fitur yang berubah. Compile sukses bukan bukti fitur berjalan.
+3. Build, install ke device, dan uji manual fitur yang berubah (lihat bagian **Audit E2E**). Compile sukses bukan bukti fitur berjalan.
 4. Commit per topik (lihat konvensi di bawah), lalu check off item todo (tanpa catatan), lalu push `main` + `master`.
 5. Laporkan hasil singkat di akhir: apa yang berubah, commit hash, dan hasil verifikasi.
 
@@ -65,6 +65,43 @@ app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.a
 - Screenshot: `adb -s d89608bf exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
 - Tag logcat untuk panel preview: `YokaiPanel`. Cek crash dengan logcat `FATAL`.
 - Jangan menguji berlebihan saat user sedang memakai HP; ambil snapshot singkat dan terkontrol.
+
+## Audit E2E
+
+Setiap perubahan fitur/UI wajib melewati audit end-to-end di device fisik sebelum dilaporkan selesai. Urutannya:
+
+1. Build + sign + install build terbaru (lihat bagian sebelumnya).
+2. Bersihkan logcat, lalu launch app:
+
+   ```sh
+   adb -s d89608bf logcat -c
+   adb -s d89608bf shell am start -n eu.kanade.tachiyomi.yokai/.MainActivityDefaultDummy
+   ```
+
+3. Uji golden path fitur yang berubah. Contoh untuk panel preview halaman:
+   - Buka Library → pilih manga → halaman detail.
+   - Swipe kiri untuk membuka preview; cek marker biru sesuai chapter/halaman terakhir dibaca.
+   - Swipe kanan dan tombol back untuk menutup preview.
+   - Pastikan animasi mulus, tanpa kedip atau lompat posisi.
+4. Uji edge case yang relevan:
+   - Manga tanpa history dan manga yang semua chapternya sudah dibaca.
+   - Manga dengan ratusan chapter (anchor harus ke chapter yang benar).
+   - Swipe cepat dan swipe pelan, gesture diagonal, drag vertikal.
+   - Panel dibuka sebelum history selesai dimuat.
+   - Buka-tutup panel berulang kali.
+5. Ambil screenshot tiap state penting ke `C:/tmp/...` dan baca dengan tool Read untuk verifikasi visual.
+6. Cek crash dan error:
+   - `adb -s d89608bf logcat -d | grep -c FATAL` harus `0`.
+   - Buffer crash harus kosong: `adb -s d89608bf logcat -d -b crash`.
+7. Regression check di sekitar fitur: navigasi back, swipe chapter row (bookmark/read), scroll daftar chapter, tema, dan fitur lain yang menyentuh file yang sama.
+8. Baru setelah lolos audit: commit per topik, check off todo, lalu push.
+
+Aturan audit:
+
+- Compile sukses bukan bukti fitur benar; perubahan UI wajib diuji di device.
+- Jangan menguji berlebihan saat user sedang memakai HP.
+- Hasil audit dilaporkan di akhir sesi — **bukan** ditulis sebagai catatan di `todo.md`.
+- Perubahan non-UI (build/dependency) cukup: build → install → launch → logcat bersih → tidak ada regresi saat startup.
 
 ## Catatan Git Bash (Windows)
 
