@@ -1,0 +1,91 @@
+# AGENTS.md
+
+Aturan dan konvensi kerja untuk siapa pun (manusia atau agent) yang mengerjakan project ini.
+
+## Tentang Project
+
+- **Miyako** adalah fork personal dari [Yōkai](https://github.com/null2264/yokai) (yang merupakan fork Mihon/Tachiyomi).
+- Tujuan fork: menjadikan app **lebih ringan, hemat RAM, dan mulus** (referensi UX: Usagi) **tanpa mengubah UI/UX Yōkai** dan **tanpa menghapus fitur**.
+- Package app: `eu.kanade.tachiyomi` (+ suffix `.yokai` untuk build standard release). Nama app tetap "Yōkai"; repo bernama "miyako".
+- `todo.md` di root adalah daftar pekerjaan dari user. Item `- []` adalah yang harus dikerjakan; item `- [x]` sudah selesai.
+
+## Aturan Wajib (tidak bisa dinegosiasikan)
+
+1. **Selalu commit setiap ada perubahan.** Pecah pekerjaan menjadi beberapa commit logis — jangan pernah menggabungkan semuanya menjadi satu commit besar. Tujuannya agar riwayat bisa ditelusuri kembali setelah sesi berakhir.
+2. **Checklist todo.md otomatis** saat item selesai dikerjakan dan diverifikasi. Ubah `- []` menjadi `- [x]`.
+3. **Jangan menambahkan catatan ("catatan:") di todo.md.** Cukup ubah status checkbox. Jangan menyentuh item yang dikomentari user (`<!-- ... -->`) kecuali user mengaktifkannya lagi.
+4. **Pertahankan UI/UX Yōkai.** Ada larangan keras membuat UI/UX baru yang bertentangan dengan UI/UX Yōkai. Perubahan harus terasa seperti bagian asli dari app (styling, navigasi, gesture, animasi).
+5. **Jangan membuang fungsi atau fitur yang sudah ada.** Refactor diperbolehkan selama perilaku dan fitur tetap utuh.
+6. **Push hanya ke remote `miyako`** (`https://github.com/pepestunaa/miyako`). Remote `origin` adalah upstream (`null2264/yokai`) — jangan pernah push ke sana.
+7. **Sinkronkan `main` dan `master`**: setelah perubahan di-push ke `main`, fast-forward `master` ke `main` dan push `master` juga.
+8. **Jangan lakukan operasi git destruktif tanpa izin eksplisit** (force push, `reset --hard`, hapus branch, `clean -f`). Commit baru selalu lebih baik daripada amend.
+
+## Alur Kerja
+
+1. Baca `todo.md`, cek `git status`, dan pahami kode terkait sebelum mengubah apa pun.
+2. Implementasi seminimal mungkin dan fokus pada item yang dikerjakan — tanpa refactor atau abstraksi yang tidak diminta.
+3. Build, install ke device, dan uji manual fitur yang berubah. Compile sukses bukan bukti fitur berjalan.
+4. Commit per topik (lihat konvensi di bawah), lalu check off item todo (tanpa catatan), lalu push `main` + `master`.
+5. Laporkan hasil singkat di akhir: apa yang berubah, commit hash, dan hasil verifikasi.
+
+## Commit Convention
+
+Gunakan Conventional Commits, bahasa Inggris, subject singkat:
+
+```
+feat(Manga): glide the preview to the last-read page
+fix(Manga): anchor the preview marker to the most recently read chapter
+perf(app): cache images on disk and skip reader preload under memory pressure
+build: add devAbi flag and parallel Gradle for faster builds
+docs(todo): check off the preview marker and magnet tasks
+docs: rewrite the README with clean, consistent structure
+```
+
+- Subject maksimal ~50 karakter, menjelaskan *apa*.
+- Body (jika perlu) menjelaskan *kenapa*, bukan *bagaimana*.
+- Perubahan pada `todo.md` selalu commit terpisah dengan prefix `docs(todo):`.
+- Satu commit = satu topik logis; file-file terkait satu perbaikan boleh digabung.
+
+## Build dan Verifikasi di Device
+
+```sh
+# Build (sekitar 2-2.5 menit)
+./gradlew :app:assembleStandardRelease -PdevAbi=arm64-v8a --console=plain -x lint
+
+# Output
+app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk
+```
+
+- APK release tidak di-sign otomatis: `zipalign -f 4` lalu `apksigner.bat sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --out ...`.
+- `apksigner` hanya tersedia sebagai `apksigner.bat` di build-tools; gunakan file `.bat`.
+- Pakai path `C:/tmp/...` untuk intermediate APK (bukan `/tmp`, zipalign gagal di sana).
+- Device uji: OPPO CPH1931 (`d89608bf`), 720x1600 @320dpi, Android 10.
+- adb: `~/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
+- Install: `adb -s d89608bf install -r <apk>`.
+- Screenshot: `adb -s d89608bf exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
+- Tag logcat untuk panel preview: `YokaiPanel`. Cek crash dengan logcat `FATAL`.
+- Jangan menguji berlebihan saat user sedang memakai HP; ambil snapshot singkat dan terkontrol.
+
+## Catatan Git Bash (Windows)
+
+- Set `export MSYS_NO_PATHCONV=1` sebelum perintah adb yang memakai path di dalam device.
+- Jangan background chain dengan `&`; environment variable (mis. `ADB=...`) hilang di shell baru. Jalankan assignment dan perintah di satu shell foreground.
+- Staging per-hunk bisa memakai `awk` (`RS="\n@@ "`) + `git apply --cached` untuk memisahkan commit logis.
+
+## Peta Kode Kunci
+
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsController.kt` — gesture halaman detail, panel preview kanan, scrim, magnet swipe, hint sekali.
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsAdapter.kt` — grid halaman per chapter, marker halaman terakhir dibaca, anchor + glide.
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsPresenter.kt` — data chapters/history, urutan load.
+- `app/src/main/res/layout/manga_details_controller.xml` — layout detail + view scrim preview.
+- `app/src/main/res/drawable/preview_scrim_top.xml`, `preview_scrim_bottom.xml` — gradient scrim.
+- `app/build.gradle.kts` — konfigurasi build, flavor, signing, `devAbi`.
+
+## Yang Harus Dihindari
+
+- Membuat layar, tombol, atau alur baru yang tidak ada di Yōkai.
+- Menghapus fitur/opsi hanya karena "tidak dipakai" tanpa instruksi user.
+- Commit besar berisi banyak topik sekaligus.
+- Menambah catatan di `todo.md`.
+- Push ke `origin` atau memaksa push ke branch mana pun.
+- Menyatakan selesai tanpa build + uji di device (untuk perubahan UI).
