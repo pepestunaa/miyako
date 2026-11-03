@@ -449,6 +449,8 @@ class MangaDetailsController :
             context.getResourceColor(AR.attr.textColorPrimaryInverse),
         )
         binding.fab.setTextColor(ColorStateList(states, textColors))
+        binding.scrollToTop.backgroundTintList = ColorStateList(states, colors)
+        binding.scrollToTop.iconTint = ColorStateList(states, textColors)
     }
 
     /** Check if device is tablet, and use a second recycler to hold the details header if so */
@@ -903,7 +905,7 @@ class MangaDetailsController :
             alpha = 1f
         }
         binding.fab.hide()
-        binding.scrollToTop.isVisible = false
+        binding.scrollToTop.hide()
         binding.fastScroller.isVisible = false
         binding.swipeRefresh.isEnabled = false
     }
@@ -957,8 +959,8 @@ class MangaDetailsController :
     private fun setInsets(insets: WindowInsetsCompat, appbarHeight: Int, offset: Int) {
         val systemInsets = insets.ignoredSystemInsets
         val fabPadding = 72.dpToPx // FAB height (56dp) + margin (16dp)
-        // Leave room for the back-to-top mini FAB (40dp) and its 12dp gap above the FAB.
-        binding.recycler.updatePaddingRelative(bottom = systemInsets.bottom + fabPadding + 52.dpToPx)
+        // Leave room for the back-to-top FAB (56dp) and its 12dp gap above the FAB.
+        binding.recycler.updatePaddingRelative(bottom = systemInsets.bottom + fabPadding + 68.dpToPx)
         binding.tabletRecycler.updatePaddingRelative(bottom = systemInsets.bottom)
         val tHeight = toolbarHeight.takeIf { it ?: 0 > 0 } ?: appbarHeight
         headerHeight = tHeight + systemInsets.top
@@ -1348,13 +1350,13 @@ class MangaDetailsController :
 
     private fun updateScrollToTopVisibility() {
         if (isTablet || previewOpen || !isBindingInitialized) {
-            binding.scrollToTop.isVisible = false
+            binding.scrollToTop.hide()
             return
         }
         val header = getHeader()
         val scrolledDown = binding.recycler.canScrollVertically(-1) &&
             (header == null || header.itemView.bottom <= binding.recycler.paddingTop)
-        binding.scrollToTop.isVisible = scrolledDown
+        if (scrolledDown) binding.scrollToTop.show() else binding.scrollToTop.hide()
     }
 
     private fun scrollToTop() {

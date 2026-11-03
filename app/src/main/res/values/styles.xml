@@ -60,15 +60,6 @@
         <item name="android:textColor">?attr/colorOnSecondary</item>
     </style>
 
-    <style name="Theme.Widget.ScrollToTop" parent="@style/Widget.Material3.FloatingActionButton.Secondary">
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_gravity">bottom|end</item>
-        <item name="fabCustomSize">40dp</item>
-        <item name="tint">?attr/colorOnSecondary</item>
-        <item name="backgroundTint">?attr/colorSecondary</item>
-    </style>
-
     <style name="Widget.Tachiyomi.ActionMode" parent="Widget.Material3.ActionMode">
         <item name="colorControlHighlight">?colorControlHighlight</item>
         <item name="background">?colorPrimaryVariant</item>
