@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.manga
 import android.os.SystemClock
 import android.view.ActionMode
 import android.view.View
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.TextView
 import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.GridLayoutManager
@@ -211,6 +211,17 @@ class MangaDetailsAdapter(
                 recycler.scrollToPosition(position)
                 return@post
             }
+            // When the page is already laid out nearby, glide straight from the current
+            // position. Parking first would show a jump right as the panel opens.
+            val targetTop = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
+            if (targetTop != null) {
+                val dy = targetTop - recycler.paddingTop
+                val maxGlide = (recycler.height - recycler.paddingTop - recycler.paddingBottom) * 2
+                if (dy in 0..maxGlide) {
+                    if (dy >= 16.dpToPx) glideTo(recycler, dy)
+                    return@post
+                }
+            }
             val lead = (position - pageScrollLead()).coerceAtLeast(0)
             if (lead >= position) {
                 layoutManager.scrollToPositionWithOffset(position, 0)
@@ -236,15 +247,16 @@ class MangaDetailsAdapter(
                     // animating at this point would look like a stray scroll.
                     SystemClock.uptimeMillis() - parkedAt > GLIDE_MAX_DELAY_MS ->
                         layoutManager.scrollToPositionWithOffset(target, 0)
-                    else -> recycler.smoothScrollBy(
-                        0,
-                        dy,
-                        DecelerateInterpolator(2f),
-                        (dy * 1.2f).coerceIn(300f, 650f).toInt(),
-                    )
+                    else -> glideTo(recycler, dy)
                 }
             }
         }
+    }
+
+    private fun glideTo(recycler: RecyclerView, dy: Int) {
+        // Standard easing starts and ends at rest, so the glide doesn't read as a dart.
+        val duration = (dy * 1.4f).coerceIn(320f, 700f).toInt()
+        recycler.smoothScrollBy(0, dy, PathInterpolator(0.4f, 0f, 0.2f, 1f), duration)
     }
 
     private fun pageScrollLead(): Int =
