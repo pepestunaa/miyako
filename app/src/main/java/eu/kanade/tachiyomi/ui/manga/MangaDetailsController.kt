@@ -42,6 +42,7 @@ import androidx.core.net.toFile
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsCompat.Type.systemBars
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
@@ -269,6 +270,12 @@ class MangaDetailsController :
                     bottomMargin = systemBars.bottom + 16.dpToPx
                 }
             }
+            binding.scrollToTop.updateLayoutParams {
+                if (this is CoordinatorLayout.LayoutParams) {
+                    // Sit right above the extended FAB: 16dp margin + 56dp FAB + 12dp gap.
+                    bottomMargin = systemBars.bottom + 84.dpToPx
+                }
+            }
 
             insets
         }
@@ -289,10 +296,12 @@ class MangaDetailsController :
                 }
 
                 updateFabVisibility()
+                updateScrollToTopVisibility()
             }
         })
         binding.fab.transitionName = "details start reading transition"
         binding.fab.setOnClickListener { readNextChapter(it) }
+        binding.scrollToTop.setOnClickListener { scrollToTop() }
 
         presenter.onCreateLate()
         binding.swipeRefresh.isRefreshing = presenter.isLoading
@@ -894,6 +903,7 @@ class MangaDetailsController :
             alpha = 1f
         }
         binding.fab.hide()
+        binding.scrollToTop.isVisible = false
         binding.fastScroller.isVisible = false
         binding.swipeRefresh.isEnabled = false
     }
@@ -907,6 +917,7 @@ class MangaDetailsController :
         binding.fastScroller.isVisible = true
         updateFab()
         if (binding.fab.isEnabled) updateFabVisibility()
+        updateScrollToTopVisibility()
     }
 
     private fun startsOnSwipeableChapter(recycler: RecyclerView, event: MotionEvent): Boolean {
@@ -946,7 +957,8 @@ class MangaDetailsController :
     private fun setInsets(insets: WindowInsetsCompat, appbarHeight: Int, offset: Int) {
         val systemInsets = insets.ignoredSystemInsets
         val fabPadding = 72.dpToPx // FAB height (56dp) + margin (16dp)
-        binding.recycler.updatePaddingRelative(bottom = systemInsets.bottom + fabPadding)
+        // Leave room for the back-to-top mini FAB (40dp) and its 12dp gap above the FAB.
+        binding.recycler.updatePaddingRelative(bottom = systemInsets.bottom + fabPadding + 52.dpToPx)
         binding.tabletRecycler.updatePaddingRelative(bottom = systemInsets.bottom)
         val tHeight = toolbarHeight.takeIf { it ?: 0 > 0 } ?: appbarHeight
         headerHeight = tHeight + systemInsets.top
@@ -1331,6 +1343,29 @@ class MangaDetailsController :
             binding.fab.hide()
         } else {
             binding.fab.show()
+        }
+    }
+
+    private fun updateScrollToTopVisibility() {
+        if (isTablet || previewOpen || !isBindingInitialized) {
+            binding.scrollToTop.isVisible = false
+            return
+        }
+        val header = getHeader()
+        val scrolledDown = binding.recycler.canScrollVertically(-1) &&
+            (header == null || header.itemView.bottom <= binding.recycler.paddingTop)
+        binding.scrollToTop.isVisible = scrolledDown
+    }
+
+    private fun scrollToTop() {
+        val recycler = binding.recycler
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager ?: return
+        if (layoutManager.findFirstVisibleItemPosition() > SCROLL_TO_TOP_JUMP_THRESHOLD) {
+            // Animating across hundreds of chapters would take too long; jump closer, then glide.
+            layoutManager.scrollToPositionWithOffset(SCROLL_TO_TOP_JUMP_THRESHOLD, 0)
+            recycler.doOnNextLayout { recycler.smoothScrollToPosition(0) }
+        } else {
+            recycler.smoothScrollToPosition(0)
         }
     }
 
@@ -2395,6 +2430,8 @@ class MangaDetailsController :
         private const val PANEL_FLING_VELOCITY = 220f
         private const val PANEL_ANIM_MS = 240L
         private const val PANEL_ANIM_MIN_MS = 100L
+
+        private const val SCROLL_TO_TOP_JUMP_THRESHOLD = 30
 
         private const val PANEL_HINT_DELAY_MS = 700L
         private const val PANEL_HINT_PEEK = 0.18f

@@ -531,6 +531,7 @@
     <!-- Manga details -->
     <string name="about_this_">About this %1$s</string>
     <string name="start_reading">Start reading</string>
+    <string name="back_to_top">Back to top</string>
     <string name="start_reading_chapter_">Start reading Chapter %1$s</string>
     <string name="continue_reading_chapter_">Continue reading Chapter %1$s</string>
     <string name="continue_reading">Continue reading</string>
