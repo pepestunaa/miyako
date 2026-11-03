@@ -6,24 +6,25 @@
 
 # Miyako
 
-**A personal fork of [Yōkai](https://github.com/null2264/yokai)**
-
-</div>
-
-<div align="center">
-
 A free and open source manga reader for Android
+
+**A personal fork of [Yōkai](https://github.com/null2264/yokai)**
 
 [![License: Apache-2.0](https://img.shields.io/github/license/pepestunaa/miyako?labelColor=27303D&color=0877d2)](/LICENSE)
 
 <img src="./.github/readme-images/screens.gif" alt="Yokai screenshots" />
 
+</div>
+
 ## Download
 
-There are no prebuilt releases for this fork yet. Build it from source with
-`./gradlew :app:assembleStandardRelease`.
+There are no prebuilt releases for this fork yet. Build it from source:
 
-*Requires Android 8.0 or higher.*
+```sh
+./gradlew :app:assembleStandardRelease
+```
+
+Requires Android 8.0 or higher.
 
 ## About This Fork
 
@@ -36,130 +37,92 @@ The fork keeps Yōkai's look, navigation, and reading experience. The changes be
 lighter install, lower memory usage, and smoother manga details — preserving the existing UI/UX
 instead of introducing a new one.
 
-### What changed in this fork
+## Changes in This Fork
 
-**Lighter and faster**
-* Removed Firebase Crashlytics/analytics, the Conscrypt TLS provider, QuickJS, `kotlin-reflect`,
+### Lighter and faster
+
+- Removed Firebase Crashlytics/analytics, the Conscrypt TLS provider, QuickJS, `kotlin-reflect`,
   `slice`, and other unused dependencies.
-* Removed the onboarding flow and its entry points.
-* Standard flavor ships English-only resources, with compressed JNI libraries.
-* Replaced `image-decoder` with `libavif` plus the platform decoder.
-* Added disk image caching and skip reader preloading under memory pressure.
-* Fixed history writes to use update-or-insert instead of upserts.
-* Added a `devAbi` flag and parallel Gradle for quicker local builds.
+- Removed the onboarding flow and its entry points.
+- Standard flavor ships English-only resources, with compressed JNI libraries.
+- Replaced `image-decoder` with `libavif` plus the platform decoder.
+- Added disk image caching and skip reader preloading under memory pressure.
+- Fixed history writes to use update-or-insert instead of upserts.
+- Added a `devAbi` flag and parallel Gradle for quicker local builds.
 
-**Manga details**
-* Usagi-style page grid: every chapter expands into its page thumbnails on the details screen.
-* Swipe left on the details screen to open a right-docked pages preview, with a one-time swipe hint
+### Manga details
+
+- Usagi-style page grid: every chapter expands into its page thumbnails on the details screen.
+- Swipe left on the details screen to open a right-docked pages preview, with a one-time swipe hint
   on first use.
-* Magnetic swipe: a short swipe or light flick completes opening/closing the preview.
-* The preview anchors and glides to the last-read page.
-* The preview page marker follows the most recently read chapter, even when reading ahead in a
-  manga with many chapters.
-* Top and bottom scrims keep the status bar and navigation area readable over the preview.
-* Chapters and Pages switch with a directional, drag-following swipe, styled like the app's main
+- Magnetic swipe: a short swipe or light flick completes opening/closing the preview.
+- The preview anchors and glides to the last-read page.
+- The preview page marker follows the most recently read chapter, even when reading ahead in a manga
+  with many chapters.
+- Top and bottom scrims keep the status bar and navigation area readable over the preview.
+- Chapters and Pages switch with a directional, drag-following swipe, styled like the app's main
   tabs, and chapter rows keep their original swipe actions.
 
 ## Features
 
-Features inherited from the upstream lineage, kept unchanged in this fork.
+The fork inherits Yōkai's full feature set.
 
-<div align="left">
+### From Yōkai
 
-<details open="">
-    <summary><h3>From Yōkai</h3></summary>
+- NSFW/SFW library filter (taken from [TachiyomiSY](https://github.com/jobobby04/TachiyomiSY)).
+- Fix backup incompatibility with upstream.
+- New theme.
+- Local Source chapters now reads ComicInfo.xml for chapter title, number, and scanlator.
 
-* NSFW/SFW library filter (taken from [TachiyomiSY](https://github.com/jobobby04/TachiyomiSY)).
-* Fix backup incompatibility with upstream.
-* New theme.
-* Local Source chapters now reads ComicInfo.xml for chapter title, number, and scanlator.
+### From upstream (Tachiyomi/Mihon)
 
-</details>
+- Local reading of downloaded content.
+- A configurable reader with multiple viewers, reading directions and other settings.
+- Tracker support: [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/),
+  [Kitsu](https://kitsu.app/explore/anime), [Manga Updates](https://www.mangaupdates.com/),
+  [Shikimori](https://shikimori.one), and [Bangumi](https://bgm.tv/) support.
+- Categories to organize your library.
+- Light and dark themes.
+- Schedule updating your library for new chapters.
+- Create backups locally to read offline or to your desired cloud service.
 
-<details open="">
-    <summary><h3>From upstream (Tachiyomi/Mihon)</h3></summary>
+### From J2K
 
-* Local reading of downloaded content.
-* A configurable reader with multiple viewers, reading directions and other settings.
-* Tracker support:
-  [MyAnimeList](https://myanimelist.net/),
-  [AniList](https://anilist.co/),
-  [Kitsu](https://kitsu.app/explore/anime),
-  [Manga Updates](https://www.mangaupdates.com/),
-  [Shikimori](https://shikimori.one),
-  and [Bangumi](https://bgm.tv/) support.
-* Categories to organize your library.
-* Light and dark themes.
-* Schedule updating your library for new chapters.
-* Create backups locally to read offline or to your desired cloud service.
-
-</details>
-
-<details>
-    <summary><h3>From J2K</h3></summary>
-
-* UI redesign.
-* New Manga details screens, themed by their manga covers.
-* Combine 2 pages while reading into a single one for a better tablet experience.
-* An expanded toolbar for easier one handed use (with the option to reduce the size back down).
-* Floating searchbar to easily start a search in your library or while browsing.
-* Library redesigned as a single list view: See categories listed in a vertical view, that can be collasped or expanded with a tap.
-* Staggered Library grid.
-* Drag & Drop Sorting in Library.
-* Dynamic Categories: Group your library automatically by the tags, tracking status, source, and more.
-* New Recents page: Providing quick access to newly added manga, new chapters, and to continue where you left on in a series.
-* Stats Page.
-* New Themes.
-* Dynamic Shortcuts: open the latest chapter of what you were last reading right from your homescreen.
-* [New material snackbar](.github/readme-images/material%20snackbar.png): Removing manga now auto deletes chapters and has an undo button in case you change your mind.
-* Batch Auto-Source Migration (taken from [TachiyomiEH](https://github.com/NerdNumber9/TachiyomiEH)).
-* [Share sheets upgrade for Android 10](.github/readme-images/share%20menu.png)
-* View all chapters right in the reader.
-* A lot more Material Design You additions.
-* Android 12 features such as automatic extension and app updates.
-
-</details>
-
-</div>
+- UI redesign.
+- New Manga details screens, themed by their manga covers.
+- Combine 2 pages while reading into a single one for a better tablet experience.
+- An expanded toolbar for easier one handed use (with the option to reduce the size back down).
+- Floating searchbar to easily start a search in your library or while browsing.
+- Library redesigned as a single list view: see categories listed in a vertical view that can be
+  collapsed or expanded with a tap.
+- Staggered Library grid.
+- Drag & Drop sorting in Library.
+- Dynamic Categories: group your library automatically by the tags, tracking status, source, and more.
+- New Recents page: providing quick access to newly added manga, new chapters, and to continue where
+  you left off in a series.
+- Stats page.
+- New themes.
+- Dynamic Shortcuts: open the latest chapter of what you were last reading right from your homescreen.
+- [New material snackbar](.github/readme-images/material%20snackbar.png): removing manga now auto
+  deletes chapters and has an undo button in case you change your mind.
+- Batch Auto-Source Migration (taken from [TachiyomiEH](https://github.com/NerdNumber9/TachiyomiEH)).
+- [Share sheets upgrade for Android 10](.github/readme-images/share%20menu.png).
+- View all chapters right in the reader.
+- A lot more Material Design You additions.
+- Android 12 features such as automatic extension and app updates.
 
 ## Contributing
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+This is a personal fork; pull requests are welcome, but upstream contributions belong to
+[Yōkai](https://github.com/null2264/yokai).
 
-<div align="left">
+When reporting an issue on this fork:
 
-<details><summary>Issues</summary>
+- Include the version (**Settings → About → Version**) and clear steps to reproduce.
+- Include a screenshot when relevant, and use [Pastebin](https://pastebin.com/) for long logs.
+- Report issues that also affect upstream to the [Yōkai issue tracker](https://github.com/null2264/yokai/issues).
 
-**Before reporting a new issue on this fork, take a look at this repository's [issues](https://github.com/pepestunaa/miyako/issues). Issues that also affect upstream should be reported to [Yōkai](https://github.com/null2264/yokai/issues) instead.**
-
-</details>
-
-<details><summary>Bugs</summary>
-
-* Include version (**Settings → About → Version**).
-  * If not latest, try updating, it may have already been solved.
-  * Dev version is equal to the number of commits as seen in the main page.
-* Include steps to reproduce (if not obvious from description).
-* Include screenshot (if needed).
-* If it could be device-dependent, try reproducing on another device (if possible).
-* For large logs use [Pastebin](https://pastebin.com/) (or similar).
-* Don't group unrelated requests into one issue.
-- **DO**: [Example #1](https://git.mihon.tech/tachiyomi/tachiyomi/issues/24), [Example #2](https://git.mihon.tech/tachiyomi/tachiyomi/issues/71).
-- **DON'T**: [Example #1](https://git.mihon.tech/tachiyomi/tachiyomi/issues/75).
-
-</details>
-
-<details><summary>Feature Requests</summary>
-
-* Write a detailed issue, explaning what it should do or how.
-  * Avoid writing just "like X app does"
-* Include screenshot (if needed).
-
-</details>
-
-</div>
-
-### Credits
+## Credits
 
 This fork exists thanks to the [Yōkai](https://github.com/null2264/yokai) project and everyone who
 contributed to it.
@@ -168,11 +131,11 @@ contributed to it.
     <img src="https://contrib.rocks/image?repo=null2264/yokai" alt="Yokai app contributors" title="Yokai app contributors" width="600"/>
 </a>
 
-### Disclaimer
+## Disclaimer
 
 The developer(s) of this application does not have any affiliation with the content providers available, and this application hosts zero content.
 
-### License
+## License
 
 <pre>
 Copyright © 2015 Javier Tomás
@@ -191,4 +154,3 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 </pre>
-</div>
