@@ -730,8 +730,8 @@ class MangaDetailsController :
                                 panelAvailable() &&
                                 (if (opensPanel) dx < 0f else dx > 0f) &&
                                 abs(dx) > touchSlop &&
-                                abs(dx) > abs(dy) * 1.5f &&
-                                abs(stepX) > abs(stepY) * 1.5f
+                                abs(dx) > abs(dy) * 1.25f &&
+                                abs(stepX) > abs(stepY) * 1.25f
                             ) {
                                 dragging = beginDrag(e)
                             } else if (dragging) {
@@ -2386,10 +2386,10 @@ class MangaDetailsController :
 
         private const val DEFAULT_GRID_SPAN_COUNT = 3
 
-        // Magnet thresholds: a short swipe or light flick completes, so a missed swipe never
-        // has to be repeated.
-        private const val PANEL_SWIPE_THRESHOLD = 0.12f
-        private const val PANEL_FLING_VELOCITY = 400f
+        // Magnet thresholds: even a short swipe or light flick completes, so a missed swipe
+        // never has to be repeated.
+        private const val PANEL_SWIPE_THRESHOLD = 0.05f
+        private const val PANEL_FLING_VELOCITY = 220f
         private const val PANEL_ANIM_MS = 240L
         private const val PANEL_ANIM_MIN_MS = 100L
 
