@@ -60,8 +60,9 @@ class MangaDetailsAdapter(
     private var currentPage: Pair<Long, Int>? = null
     private var anchorChapterId: Long? = null
     private var pendingScrollToCurrent = false
-    private var autoScrollTarget: ChapterPageItem? = null
     private var priorityChapterId: Long? = null
+    private var viewportMovePending = false
+    private var viewportAnchor: ViewportAnchor? = null
     private var batchSize = INITIAL_BATCH_SIZE
 
     private val batchScrollListener = object : RecyclerView.OnScrollListener() {
@@ -160,8 +161,48 @@ class MangaDetailsAdapter(
                 gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
             }
         }
-        updateItems(gridItems)
+        withViewportAnchor { updateItems(gridItems) }
     }
+
+    /**
+     * RecyclerView doesn't compensate the viewport when rows appear above it, and a dataset swap
+     * resets the scroll position entirely. Both happen while the preview fills in: batches grow,
+     * and every chapter that comes into range attaches its thumbnails. Without a landing target the
+     * row at the top of the grid is what the reader is looking at, so that gets pinned; with one,
+     * the target holds the top no matter how much content arrives around it.
+     */
+    private fun withViewportAnchor(block: () -> Unit) {
+        val recycler = recyclerView
+        val layoutManager = recycler?.layoutManager as? LinearLayoutManager
+        if (recycler == null || layoutManager == null) {
+            block()
+            return
+        }
+        // A jump that hasn't laid out yet, or a scroll still running, owns the viewport: pinning
+        // over it would cancel the park or the glide. The settle pass picks the target back up
+        // once the list comes to rest.
+        if (viewportMovePending || recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
+            block()
+            return
+        }
+        val anchor = viewportAnchor ?: captureTopRow(recycler)
+        block()
+        if (anchor == null) return
+        val position = getGlobalPositionOf(anchor.item)
+        if (position == RecyclerView.NO_POSITION) return
+        layoutManager.scrollToPositionWithOffset(position, anchor.offset)
+    }
+
+    /** The row currently at the top of the grid, or null when positions are too stale to trust. */
+    private fun captureTopRow(recycler: RecyclerView): ViewportAnchor? {
+        val firstChild = recycler.getChildAt(0) ?: return null
+        val firstPosition = recycler.getChildAdapterPosition(firstChild)
+        if (firstPosition !in 0 until itemCount) return null
+        val firstItem = getItem(firstPosition) ?: return null
+        return ViewportAnchor(firstItem, firstChild.top - recycler.paddingTop)
+    }
+
+    private data class ViewportAnchor(val item: IFlexible<*>, val offset: Int)
 
     private fun updateItems(items: List<IFlexible<*>>) {
         // FlexibleAdapter skips updateDataSet while a filter is active; filtering is handled by filteredItems().
@@ -211,6 +252,7 @@ class MangaDetailsAdapter(
     fun loadVisiblePageSections() {
         if (!pageGridMode) return
         val recycler = recyclerView ?: return
+        settleAnchorToTop(recycler)
         for (i in 0 until recycler.childCount) {
             val child = recycler.getChildAt(i) ?: continue
             (recycler.getChildViewHolder(child) as? ChapterPageHolder)?.loadImageIfNeeded()
@@ -231,8 +273,11 @@ class MangaDetailsAdapter(
             // History may still be loading: keep waiting so a later refresh can anchor.
             priorityChapterId = null
             pendingScrollToCurrent = !presenter.historyLoaded
-            autoScrollTarget = null
-            if (presenter.historyLoaded) recycler.scrollToPosition(0)
+            viewportAnchor = null
+            if (presenter.historyLoaded) {
+                markViewportMove(recycler)
+                recycler.scrollToPosition(0)
+            }
             return
         }
         // Fetch the last-read chapter's page list before any other section gets a chance.
@@ -249,82 +294,110 @@ class MangaDetailsAdapter(
         // jump to the page itself once they attach. Without a page marker the section is
         // already the destination, so there is nothing left to wait for.
         pendingScrollToCurrent = currentPage != null
-        autoScrollTarget = null
         val sectionPosition = sectionPositionOf(chapterId)
-        if (sectionPosition == null) {
+        val section = sectionPosition?.let { getItem(it) as? ChapterPagesSectionItem }
+        viewportAnchor = section?.let { ViewportAnchor(it, 0) }
+        if (sectionPosition == null || section == null) {
             priorityChapterId = null
             return
         }
+        markViewportMove(recycler)
         recycler.scrollToPosition(sectionPosition)
-        (getItem(sectionPosition) as? ChapterPagesSectionItem)?.let { onPageSectionBound(it) }
+        onPageSectionBound(section)
     }
 
     fun cancelPendingScroll() {
         pendingScrollToCurrent = false
-        autoScrollTarget = null
+        // The reader took over the grid: their own scroll position is what late loads must keep.
+        viewportAnchor = null
     }
 
     private fun anchorToCurrentPage(item: ChapterPageItem?) {
-        autoScrollTarget = item ?: return
+        if (item == null) return
         val recycler = recyclerView ?: return
+        // Nothing may pin the grid while the target is being resolved: a load that lands in this
+        // window would be read as the anchor and cut the incoming glide short. The previous claim
+        // goes with it, so a stale row can't be re-pinned over the new one.
+        viewportAnchor = null
+        viewportMovePending = true
         // Resolve the position after pending insertions are laid out: sections above the page
         // attach their thumbnails later and shift every index below them.
         recycler.post {
-            val position = getGlobalPositionOf(item)
-            if (position == RecyclerView.NO_POSITION) return@post
-            val layoutManager = recycler.layoutManager as? LinearLayoutManager
-            if (layoutManager == null) {
-                recycler.scrollToPosition(position)
-                return@post
-            }
-            // When the page is already laid out nearby, glide straight from the current
-            // position. Parking first would show a jump right as the panel opens.
-            val targetTop = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
-            if (targetTop != null) {
-                val dy = targetTop - recycler.paddingTop
-                val maxGlide = (recycler.height - recycler.paddingTop - recycler.paddingBottom) * 2
-                if (dy in 0..maxGlide) {
-                    if (dy >= 16.dpToPx) glideTo(recycler, dy)
-                    return@post
-                }
-            }
-            val lead = (position - pageScrollLead()).coerceAtLeast(0)
-            if (lead >= position) {
-                layoutManager.scrollToPositionWithOffset(position, 0)
-                return@post
-            }
-            // Park one grid row above, then glide the page itself into place. smoothScrollToPosition
-            // only makes an item visible, it doesn't align it to the top like we need.
-            layoutManager.scrollToPositionWithOffset(lead, 0)
-            val parkedAt = SystemClock.uptimeMillis()
-            // Measure only once the parked layout has settled; before that the target's top still
-            // reflects the old scroll position and the glide would fall short.
-            recycler.doOnNextLayout {
-                val target = getGlobalPositionOf(item)
-                if (target == RecyclerView.NO_POSITION) return@doOnNextLayout
-                val top = recycler.findViewHolderForAdapterPosition(target)?.itemView?.top
-                if (top == null) {
-                    // Content above the park grew while it was pending, so the page is off screen
-                    // again: land on it directly rather than parking one more time.
-                    layoutManager.scrollToPositionWithOffset(target, 0)
-                    return@doOnNextLayout
-                }
-                val dy = top - recycler.paddingTop
-                when {
-                    // Already at (or above) the top: snap silently, a small correction scroll
-                    // reads as a glitch.
-                    dy < 16.dpToPx -> layoutManager.scrollToPositionWithOffset(target, 0)
-                    // The layout arrived long after the park, so the panel has already settled;
-                    // animating at this point would look like a stray scroll.
-                    SystemClock.uptimeMillis() - parkedAt > GLIDE_MAX_DELAY_MS ->
-                        layoutManager.scrollToPositionWithOffset(target, 0)
-                    else -> glideTo(recycler, dy)
-                }
+            try {
+                anchorOnto(item, recycler)
+            } finally {
+                viewportMovePending = false
             }
         }
     }
 
+    private fun anchorOnto(item: ChapterPageItem, recycler: RecyclerView) {
+        val position = getGlobalPositionOf(item)
+        if (position == RecyclerView.NO_POSITION) return
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager
+        if (layoutManager == null) {
+            claimAnchor(item)
+            recycler.scrollToPosition(position)
+            return
+        }
+        // When the page is already laid out nearby, glide straight from the current
+        // position. Parking first would show a jump right as the panel opens.
+        val targetTop = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
+        if (targetTop != null) {
+            val dy = targetTop - recycler.paddingTop
+            val maxGlide = (recycler.height - recycler.paddingTop - recycler.paddingBottom) * 2
+            if (dy in 0..maxGlide) {
+                claimAnchor(item)
+                if (dy >= 16.dpToPx) glideTo(recycler, dy)
+                return
+            }
+        }
+        val lead = (position - pageScrollLead()).coerceAtLeast(0)
+        if (lead >= position) {
+            claimAnchor(item)
+            layoutManager.scrollToPositionWithOffset(position, 0)
+            return
+        }
+        // Park one grid row above, then glide the page itself into place. smoothScrollToPosition
+        // only makes an item visible, it doesn't align it to the top like we need.
+        markViewportMove(recycler)
+        layoutManager.scrollToPositionWithOffset(lead, 0)
+        val parkedAt = SystemClock.uptimeMillis()
+        // Measure only once the parked layout has settled; before that the target's top still
+        // reflects the old scroll position and the glide would fall short.
+        recycler.doOnNextLayout {
+            val target = getGlobalPositionOf(item)
+            if (target == RecyclerView.NO_POSITION) return@doOnNextLayout
+            val top = recycler.findViewHolderForAdapterPosition(target)?.itemView?.top
+            if (top == null) {
+                // Content above the park grew while it was pending, so the page is off screen
+                // again: land on it directly rather than parking one more time.
+                claimAnchor(item)
+                layoutManager.scrollToPositionWithOffset(target, 0)
+                return@doOnNextLayout
+            }
+            val dy = top - recycler.paddingTop
+            claimAnchor(item)
+            when {
+                // Already at (or above) the top: snap silently, a small correction scroll
+                // reads as a glitch.
+                dy < 16.dpToPx -> layoutManager.scrollToPositionWithOffset(target, 0)
+                // The layout arrived long after the park, so the panel has already settled;
+                // animating at this point would look like a stray scroll.
+                SystemClock.uptimeMillis() - parkedAt > GLIDE_MAX_DELAY_MS ->
+                    layoutManager.scrollToPositionWithOffset(target, 0)
+                else -> glideTo(recycler, dy)
+            }
+        }
+    }
+
+    /** Hands the grid top to [item]: every later load pins it here instead of wherever it drifts. */
+    private fun claimAnchor(item: ChapterPageItem) {
+        viewportAnchor = ViewportAnchor(item, 0)
+    }
+
     private fun glideTo(recycler: RecyclerView, dy: Int) {
+        markViewportMove(recycler)
         // Standard easing starts and ends at rest, so the glide doesn't read as a dart.
         val duration = (dy * 1.4f).coerceIn(320f, 700f).toInt()
         recycler.smoothScrollBy(0, dy, PathInterpolator(0.4f, 0f, 0.2f, 1f), duration)
@@ -333,15 +406,50 @@ class MangaDetailsAdapter(
     private fun pageScrollLead(): Int =
         (recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: 3
 
-    private fun reanchorCurrentPage() {
-        val item = autoScrollTarget ?: return
-        val recycler = recyclerView ?: return
-        recycler.post {
-            val position = getGlobalPositionOf(item)
-            if (position != RecyclerView.NO_POSITION) {
-                (recycler.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(position, 0)
-            }
+    /**
+     * Content that attached above, below or around the target can still shift it while the panel
+     * is filling in. Every time the grid comes to rest, walk the target back to where it belongs.
+     */
+    private fun settleAnchorToTop(recycler: RecyclerView) {
+        if (recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
+        val anchor = viewportAnchor ?: return
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager ?: return
+        val position = getGlobalPositionOf(anchor.item)
+        if (position == RecyclerView.NO_POSITION) return
+        val top = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
+        if (top == null) {
+            // Out of reach of any animation worth running: land on it directly.
+            layoutManager.scrollToPositionWithOffset(position, anchor.offset)
+            return
+        }
+        val dy = top - recycler.paddingTop - anchor.offset
+        when {
+            dy > recycler.height -> layoutManager.scrollToPositionWithOffset(position, anchor.offset)
+            dy in 16.dpToPx..recycler.height -> glideTo(recycler, dy)
+        }
+    }
+
+    /**
+     * A requested jump only takes effect on the next layout, and until then the viewport still
+     * reflects the old one. Pinning during that window would overwrite the jump, so mutations
+     * hold off until the layout that consumes it has run.
+     */
+    private fun markViewportMove(recycler: RecyclerView) {
+        viewportMovePending = true
+        recycler.doOnNextLayout { viewportMovePending = false }
+        // Rows added above shift the requested index before that layout runs, and a scroll asked
+        // for inside it is deferred. Re-resolve the target by identity once the frame is over.
+        recycler.post { reassertViewportAnchor(recycler) }
+    }
+
+    private fun reassertViewportAnchor(recycler: RecyclerView) {
+        val anchor = viewportAnchor ?: return
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager ?: return
+        val position = getGlobalPositionOf(anchor.item)
+        if (position == RecyclerView.NO_POSITION) return
+        val top = recycler.findViewHolderForAdapterPosition(position)?.itemView?.top
+        if (top == null || top - recycler.paddingTop != anchor.offset) {
+            layoutManager.scrollToPositionWithOffset(position, anchor.offset)
         }
     }
 
@@ -461,41 +569,14 @@ class MangaDetailsAdapter(
             return
         }
 
-        // RecyclerView doesn't compensate the scroll position when rows appear above the viewport,
-        // so pin the current first visible row before inserting pages for an off-screen section.
-        val firstChild = recycler.getChildAt(0)
-        val firstPosition = firstChild?.let { recycler.getChildAdapterPosition(it) }
-            ?: RecyclerView.NO_POSITION
-        val firstItem = if (firstPosition != RecyclerView.NO_POSITION) {
-            getItem(firstPosition)
-        } else {
-            null
-        }
-        val firstTop = firstChild?.top
-        val insertsAboveViewport =
-            firstPosition != RecyclerView.NO_POSITION && sectionPosition + 1 <= firstPosition
-        val anchorPosition = autoScrollTarget?.let { getGlobalPositionOf(it) }
-            ?: RecyclerView.NO_POSITION
-
         val animator = recycler.itemAnimator
         recycler.itemAnimator = null
         try {
-            addItems(sectionPosition + 1, pageItems)
+            withViewportAnchor { addItems(sectionPosition + 1, pageItems) }
         } finally {
-            recycler.doOnNextLayout { recycler.itemAnimator = animator }
-        }
-
-        if (insertsAboveViewport && firstItem != null && firstTop != null) {
-            val newPosition = getGlobalPositionOf(firstItem)
-            if (newPosition != RecyclerView.NO_POSITION) {
-                (recycler.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(newPosition, firstTop - recycler.paddingTop)
+            recycler.doOnNextLayout {
+                recycler.itemAnimator = animator
             }
-        }
-
-        // Keep the auto-scrolled page pinned when a section above it attaches its thumbnails.
-        if (anchorPosition != RecyclerView.NO_POSITION && sectionPosition + 1 <= anchorPosition) {
-            reanchorCurrentPage()
         }
     }
 
