@@ -59,9 +59,6 @@ class MangaDetailsAdapter(
     private var pendingScrollToCurrent = false
     private var priorityChapterId: Long? = null
 
-    private var savedPreviewAnchor: ViewportAnchor? = null
-    private var animateFromSavedPosition = false
-
     val delegate: MangaDetailsInterface = controller
     val presenter = controller.presenter
 
@@ -113,63 +110,7 @@ class MangaDetailsAdapter(
                 gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
             }
         }
-        withViewportAnchor { updateItems(gridItems) }
-    }
-
-    /**
-     * RecyclerView doesn't compensate the viewport when rows appear above it, and a dataset swap
-     * resets the scroll position entirely. Both happen while the preview fills in:
-     * every chapter that comes into range attaches its thumbnails. Without a landing target the
-     * row at the top of the grid is what the reader is looking at, so that gets pinned; with one,
-     * the target holds the top no matter how much content arrives around it.
-     */
-    private fun withViewportAnchor(block: () -> Unit) {
-        val recycler = recyclerView
-        val layoutManager = recycler?.layoutManager as? LinearLayoutManager
-        if (recycler == null || layoutManager == null) {
-            block()
-            return
-        }
-        // A scroll still running owns the viewport: pinning over it would cancel it.
-        if (recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
-            block()
-            return
-        }
-        val anchor = captureTopRow(recycler)
-        block()
-        if (anchor == null) return
-        val position = positionOfAnchor(anchor)
-        if (position == RecyclerView.NO_POSITION) return
-        layoutManager.scrollToPositionWithOffset(position, anchor.offset)
-    }
-
-    /** The row currently at the top of the grid, or null when positions are too stale to trust. */
-    private fun captureTopRow(recycler: RecyclerView): ViewportAnchor? {
-        val firstChild = recycler.getChildAt(0) ?: return null
-        val firstPosition = recycler.getChildAdapterPosition(firstChild)
-        if (firstPosition !in 0 until itemCount) return null
-        val firstItem = getItem(firstPosition) ?: return null
-        return ViewportAnchor(firstItem, firstChild.top - recycler.paddingTop)
-    }
-
-    private data class ViewportAnchor(val item: IFlexible<*>, val offset: Int)
-
-    private fun positionOfAnchor(anchor: ViewportAnchor): Int {
-        val exact = getGlobalPositionOf(anchor.item)
-        if (exact != RecyclerView.NO_POSITION) return exact
-        for (position in 0 until itemCount) {
-            val item = getItem(position)
-            val matches = when {
-                anchor.item is ChapterPagesSectionItem && item is ChapterPagesSectionItem ->
-                    anchor.item.chapter.id == item.chapter.id
-                anchor.item is ChapterPageItem && item is ChapterPageItem ->
-                    anchor.item.chapter.id == item.chapter.id &&
-                        anchor.item.page.index == item.page.index
-                else -> false
-            }
-            if (matches) return position
-        }
-        return RecyclerView.NO_POSITION
+        updateItems(gridItems)
     }
 
     private fun updateItems(items: List<IFlexible<*>>) {
@@ -232,8 +173,6 @@ class MangaDetailsAdapter(
     fun scrollToCurrentPage() {
         if (!pageGridMode) return
         val recycler = recyclerView ?: return
-        savedPreviewAnchor = null
-        animateFromSavedPosition = false
         refreshCurrentPage()
         // A chapter without a page marker still sits somewhere in the grid: a finished chapter,
         // or one left at page 0, has to open on itself instead of at the very top of the list.
@@ -387,11 +326,6 @@ class MangaDetailsAdapter(
         }
     }
 
-    fun savePreviewPosition() {
-        val recycler = recyclerView ?: return
-        savedPreviewAnchor = captureTopRow(recycler)
-    }
-
     private fun insertPageItems(
         section: ChapterPagesSectionItem,
         sectionPosition: Int,
@@ -410,7 +344,7 @@ class MangaDetailsAdapter(
         val animator = recycler.itemAnimator
         recycler.itemAnimator = null
         try {
-            withViewportAnchor { addItems(sectionPosition + 1, pageItems) }
+            addItems(sectionPosition + 1, pageItems)
         } finally {
             recycler.doOnNextLayout {
                 recycler.itemAnimator = animator

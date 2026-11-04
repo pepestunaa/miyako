@@ -21,7 +21,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
 | 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — its own target (all chapters present, filter/sort/back-to-top) is still untested; the first audit only found the tracked bug below |
 | 2 | remove the glide/anchor machinery | `git log --grep 'smooth scroll'` | ok | PENDING — combined audit with step 1 after 2c |
-| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | — | — | — |
+| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `git log --grep 'viewport anchor'` | ok | PENDING — combined audit after 2c. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
 | 2c | clean up callers in `MangaDetailsController` | — | — | — |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |

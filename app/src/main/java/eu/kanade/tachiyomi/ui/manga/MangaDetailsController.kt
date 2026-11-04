@@ -968,7 +968,7 @@ class MangaDetailsController :
 
     private fun onPreviewClosed() {
         previewOpen = false
-        previewAdapter?.savePreviewPosition()
+
         previewAdapter?.cancelPendingScroll()
         binding.pagesPreviewRecycler.visibility = View.GONE
         hidePreviewScrims()
