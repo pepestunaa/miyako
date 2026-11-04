@@ -75,37 +75,33 @@ Steps 1 and 2 removed both mechanisms.
 | `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-04) |
 | `logcat -d -b crash` | empty (agent, 2026-11-04) |
 
-## Next action — stop pages from attaching above the top row (T2)
+## Next action — device retest of the two-part attach gate (user runs T1, T2, T4)
 
-Rows for steps 1, 2, 2b and 2c stay PENDING: T2 and the T4 smoothness are what block them.
+Code is in (commit `git log --grep 'attach gate'`), built and installed, launch only. Rows for steps 1, 2,
+2b and 2c stay PENDING until the user reports T2 and the T4 smoothness.
 
-Mechanism, read from the code at `9e4cce9784`:
+What changed, in `MangaDetailsAdapter`:
 
-- RecyclerView does not compensate the viewport when rows are inserted above it. That was exactly
-  `withViewportAnchor`'s job, and step 2b deleted it on purpose, so nothing re-pins the target now.
-- `onPageSectionBound` has no position check, and `insertPageItems` adds `pages.size` rows directly under
-  that section's header. Whoever calls it can shift the whole grid.
-- Three callers can reach a section above the target: the section holder binding (a row revealed or
-  prefetched while the grid moves), `loadVisiblePageSections` walking `recycler.childCount` from
-  `onScrolled` on every DRAGGING frame, and the warm path in `MangaDetailsController`, which posts
-  `loadVisiblePageSections()` while `scrollToCurrentPage`'s `scrollToPositionWithOffset` has not laid out
-  yet — so the children it walks are the pre-jump ones at the top of the list.
-- Black Clover is sorted newest-first, so the target sits at the bottom and "above the target" is nearly
-  the whole list: one attach above pushes the target down, which reveals more sections above, which attach
-  in turn. That is the drift, and the same churn is the likeliest cost behind T4's heavy scroll.
+- `onPageSectionBound` ignores a section whose position is above `findFirstVisibleItemPosition()`
+  (`isAboveFirstVisibleRow`). Rows inserted above are not compensated by RecyclerView; step 2b removed
+  the anchor on purpose, so this gate is what keeps the target in place.
+- `loadVisiblePageSections` waits for `doOnNextLayout` while a layout is pending, so the open and warm
+  paths no longer walk the pre-jump children. `scrollToCurrentPage` ends with that pass instead of a
+  direct `onPageSectionBound`.
 
-Fix, smallest structural form, one commit:
+Checklist (Black Clover, 854 chapters, last read Ch. 2 page 11). Reply one line per item:
 
-1. In `onPageSectionBound`, ignore a section whose adapter position is above the first visible row of the
-   preview recycler — attaching it can only push what the user is looking at.
-2. Make the open path run its page pass after the jump has laid out, not before.
-3. `currentPagePosition()` and `sectionPositionOf()` scan every item on each call. Only if T4 is still
-   heavy after 1 and 2, deal with them, and treat that as step 5 work in its own commit.
+1. **T1** open the preview from the detail page (swipe). Expect: it lands on Ch. 2, no animation.
+2. **T2** wait 3 s without touching. Expect: Ch. 2 thumbnails attach by themselves, the blue marker stays
+   on page 11 and on screen, nothing stacks on or above the target.
+3. **T4** filter, sort, back to top, to the end. Expect: still correct; back to top is smoother than the
+   2026-11-04 audit. Say "same" or "better", no cause.
+
+If T4 is still heavy, the next step is item 3 of the old plan: `currentPagePosition()` and
+`sectionPositionOf()` scan every item per call; fix that as step 5 work in its own commit.
 
 Guardrails: no anchor state, no `viewportMove`-style flags, no timers, no `postDelayed` chains, no
 re-animation of the open. This is the loading rule step 5 keeps, not a second glide machine.
-
-Retest with the user: T1, T2, T4 from the table above — nothing else.
 
 ## What is measured, not asserted
 

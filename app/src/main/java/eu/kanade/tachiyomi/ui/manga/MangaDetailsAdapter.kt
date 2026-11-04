@@ -141,6 +141,9 @@ class MangaDetailsAdapter(
         if (!pageGridMode || suppressPageLoads) return
         // Attaching pages mutates the layout, which shifts the viewport mid-scroll.
         if (isScrolling) return
+        // Rows inserted above the first visible row are not compensated by RecyclerView, so they
+        // can only push the content the user is looking at.
+        if (isAboveFirstVisibleRow(section)) return
         attachCachedPages(section)
         if (!pageSectionShouldLoad(section)) return
         // Hold back other chapters while the last-read one is still fetching: the panel anchors
@@ -149,6 +152,14 @@ class MangaDetailsAdapter(
         if (priority != null && section.chapter.id != priority) return
         markPageSectionLoading(section)
         loadSectionPages(section)
+    }
+
+    private fun isAboveFirstVisibleRow(section: ChapterPagesSectionItem): Boolean {
+        val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager ?: return false
+        val firstVisible = layoutManager.findFirstVisibleItemPosition()
+        if (firstVisible == RecyclerView.NO_POSITION) return false
+        val position = getGlobalPositionOf(section)
+        return position != -1 && position < firstVisible
     }
 
     fun retryPageSection(section: ChapterPagesSectionItem) {
@@ -161,6 +172,12 @@ class MangaDetailsAdapter(
     fun loadVisiblePageSections() {
         if (!pageGridMode) return
         val recycler = recyclerView ?: return
+        // A jump that has not laid out yet leaves the pre-jump children in place; walking them
+        // would treat the top of the list as what is on screen.
+        if (recycler.isLayoutRequested) {
+            recycler.doOnNextLayout { loadVisiblePageSections() }
+            return
+        }
         for (i in 0 until recycler.childCount) {
             val child = recycler.getChildAt(i) ?: continue
             (recycler.getChildViewHolder(child) as? ChapterPageHolder)?.loadImageIfNeeded()
@@ -204,7 +221,7 @@ class MangaDetailsAdapter(
             return
         }
         scrollToRowAtTop(recycler, sectionPosition)
-        onPageSectionBound(section)
+        loadVisiblePageSections()
     }
 
 
