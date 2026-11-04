@@ -88,17 +88,31 @@ What this changes: the remaining shift is among pages of the **target chapter it
 mechanism is at best incomplete. The gate (`isAboveFirstVisibleRow`) and the layout-aware
 `loadVisiblePageSections` are still worth keeping; do not revert them without a reason.
 
-The report is ambiguous, and **one screenshot decides the branch** — ask the user for exactly one before
-diagnosing, and do not chase both readings. "Tertumpuk dengan halaman sebelumnya" can mean:
+The report was ambiguous, and **the user picked branch A on 2026-11-05**: the target chapter's own earlier
+pages (1-10 of Ch. 2) sit above the target row, so attaching the chapter inserts rows above the viewport
+and pushes the marker down. Nothing overlaps; the rows are intact. Do not investigate branch B (real
+overlap = row geometry in `ChapterLayoutManager`) unless A is disproved.
 
-- **A — pushed down by its own chapter.** Pages 1-10 of Ch. 2 sit before page 11, so attaching the chapter
-  inserts rows above the target row and the marker drifts down. Every row is intact and nothing covers
-  anything. RecyclerView cannot overlap children, so this is the likely one. Route: the target chapter's
-  own attach must re-land the viewport on the target row — check whether `maybeScrollToCurrentPage` still
-  runs after `bc58e53595` moved the open pass, and whether `pendingScrollToCurrent` survives it; if the
-  re-land is correct but ugly, attach the target chapter from the target index onward instead.
-- **B — two rows drawn on top of each other.** A real overlap is row geometry, not scroll position.
-  Route: `ChapterLayoutManager` span/height handling and the page holder's measured size.
+First question, and it is a two-file question, not a search: `maybeScrollToCurrentPage(chapterId)` is
+already supposed to re-land the viewport on the target row after `insertPageItems`, via
+`anchorToCurrentPage` -> `scrollToRowAtTop`. It is called from `onPagesLoaded` and `attachCachedPages`.
+So find why it does not produce a landing position in the user's case:
+
+- whether the attach path that runs on open reaches that call at all after `bc58e53595` replaced the
+  direct `onPageSectionBound` at the end of `scrollToCurrentPage` with the deferred `loadVisiblePageSections`
+  pass, and whether the gate can swallow the target section itself when its header is above the first
+  visible row, and
+- whether `pendingScrollToCurrent` and `currentPage?.first == chapterId` still hold at that moment.
+
+Two endings, and the user decides between them because they differ on screen:
+
+1. **Cheap**: let the chapter attach fully and re-land the viewport on page 11 once the rows exist. The
+   open then contains one visible snap. This is the same code that is supposedly already there.
+2. **Step 5 shape**: keep rows that are above the target out of the dataset at open (attach the target
+   chapter from the target index forward), so nothing is inserted above the viewport at all and the panel
+   does not move. Reaching the earlier pages then needs the compensating insert-above rule — `addItems`
+   at the header plus an immediate `scrollBy(0, addedHeight)` — which is a pixel correction, not an anchor
+   state, not a timer, and not the deleted glide. Do not build that rule here; it belongs to step 5.
 
 T4 is unchanged by this and stays step 5 work (`currentPagePosition()` and `sectionPositionOf()` scan
 every item per call).
