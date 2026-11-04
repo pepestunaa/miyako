@@ -24,9 +24,9 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 |------|-------|--------|-------|--------|
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
 | 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — device audit 2026-11-04 (see "Audit result"): its own target (all chapters present T3, filter/sort T4) passed, but T2 and the T4 back-to-top smoothness did not |
-| 2 | remove the glide/anchor machinery | `git log --grep 'smooth scroll'` | ok | PENDING — same audit; T2 FAIL is in this area |
-| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `git log --grep 'viewport anchor'` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
-| 2c | clean up callers in `MangaDetailsController` | `git log --grep 'scroll-cancel'` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
+| 2 | remove the glide/anchor machinery | `d1e378bc91` | ok | PENDING — same audit; T2 FAIL is in this area |
+| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `a21864ae59` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
+| 2c | clean up callers in `MangaDetailsController` | `9e4cce9784` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -55,10 +55,9 @@ Steps 1 and 2 removed both mechanisms.
 - **pages stay detached after open until one drag** — cause was `attachItems = !isScrolling` meeting the
   glide, which kept the recycler non-IDLE on open. Fixed by step 2: on 2026-11-04 pages attach by
   themselves. Not closed formally until T2 passes. Full report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
-- **target drifts off screen after the open (T2, seen 2026-11-04).** Pages attach on their own, but
-  the chapters above the target also load their pages; the target's thumbnails end up overlapped or
-  stacked under the chapters above, and the blue marker keeps moving down until it leaves the screen.
-  User observation only; cause not investigated. Attach gate `bc58e53595` did not fix it (retest 2026-11-05): the stacking is among pages of the target chapter itself.
+- **target drifts off screen after the open (T2).** Seen 2026-11-04 among the chapters above the target;
+  the attach gate `bc58e53595` removed that part, and the 2026-11-05 retest still fails, now among the
+  target chapter's own pages. Branch and routes: "Next action".
 - **back to top feels heavy and not smooth (T4, 2026-11-04).** Functionally correct, scroll is janky.
   Not measured; may be the same dataset-change cost as the bug above or the step 4 loader chain.
 
@@ -85,18 +84,27 @@ Retest 2026-11-05 on `bc58e53595` (Black Clover, 854 chapters, last read Ch. 2 p
 | T2 auto attach + marker on page 11 | FAIL (user, 2026-11-05) — Ch. 2 thumbnails are still stacked on the earlier pages of the same chapter |
 | T4 filter, sort, top, end | same as 2026-11-04 (user, 2026-11-05): functionally fine, back to top still heavy |
 
-What this changes: the stacking is inside the target chapter, not chapters above it. The gate in
-`onPageSectionBound` (`isAboveFirstVisibleRow`) and the layout-aware `loadVisiblePageSections` are in the
-code, but they did not fix T2, so the mechanism recorded in the 2026-11-04 audit is at best incomplete.
-Cause not known; do not assume one. Do not claim T2 fixed, and do not revert the gate without a reason.
+What this changes: the remaining shift is among pages of the **target chapter itself**, so the 2026-11-04
+mechanism is at best incomplete. The gate (`isAboveFirstVisibleRow`) and the layout-aware
+`loadVisiblePageSections` are still worth keeping; do not revert them without a reason.
 
-Next step, in a fresh thread: diagnose why one chapter's thumbnails overlap each other after the open
-(layout manager span/height handling versus insert order), starting from `ChapterLayoutManager`,
-`ChapterPageHolder` and `insertPageItems`. One screenshot of the failing state is allowed for that.
-The T4 per-call scans (`currentPagePosition()`, `sectionPositionOf()`) stay step 5 work.
+The report is ambiguous, and **one screenshot decides the branch** — ask the user for exactly one before
+diagnosing, and do not chase both readings. "Tertumpuk dengan halaman sebelumnya" can mean:
+
+- **A — pushed down by its own chapter.** Pages 1-10 of Ch. 2 sit before page 11, so attaching the chapter
+  inserts rows above the target row and the marker drifts down. Every row is intact and nothing covers
+  anything. RecyclerView cannot overlap children, so this is the likely one. Route: the target chapter's
+  own attach must re-land the viewport on the target row — check whether `maybeScrollToCurrentPage` still
+  runs after `bc58e53595` moved the open pass, and whether `pendingScrollToCurrent` survives it; if the
+  re-land is correct but ugly, attach the target chapter from the target index onward instead.
+- **B — two rows drawn on top of each other.** A real overlap is row geometry, not scroll position.
+  Route: `ChapterLayoutManager` span/height handling and the page holder's measured size.
+
+T4 is unchanged by this and stays step 5 work (`currentPagePosition()` and `sectionPositionOf()` scan
+every item per call).
 
 Guardrails: no anchor state, no `viewportMove`-style flags, no timers, no `postDelayed` chains, no
-re-animation of the open. This is the loading rule step 5 keeps, not a second glide machine.
+re-animation of the open. The fix is a loading rule, not a second glide machine.
 
 ## What is measured, not asserted
 

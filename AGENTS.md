@@ -151,7 +151,7 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 - `Grep` dulu, `Read` kemudian, dan pakai `offset`/`limit`. Jangan membaca file 900 baris untuk mengecek satu fungsi.
 - Pencarian yang butuh lebih dari tiga kueri delegasikan ke subagent, dan minta ringkasan berisi path plus nama simbol, bukan isi file.
 - Jangan memasukkan diff atau logcat penuh ke konteks: pakai `git diff --stat`, `grep -c`, `tail`.
-- Nomor baris di dokumen dan prompt bergeser setiap kali file diedit; rujuk nama simbol, bukan nomor baris.
+- Nomor baris di dokumen dan prompt bergeser setiap kali file diedit; rujuk nama simbol, bukan nomor baris. Rujuk commit dengan hash, bukan `git log --grep '<subject>'` — subject bisa tidak cocok dan pencariannya jadi jalan buntu. Jangan tempel screenshot panjang beruntun: satu gambar per pertanyaan.
 
 ## Referensi di Luar Repo (boleh dibaca, jangan diubah)
 
