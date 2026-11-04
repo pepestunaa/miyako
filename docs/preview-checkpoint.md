@@ -43,47 +43,22 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 
 ## Why the old code was broken (so nobody re-derives it)
 
-Two mechanisms fought each other: the batch window hid chapters from the adapter, then the
-glide/anchor machinery re-pinned the viewport every time that dataset changed. Batching created the
-position shifts; anchoring patched them with timing guesses, so each fix moved the bug elsewhere. The
-history reflects it — reverts `cbf2dd0564` and `d74e1bf2ef`, follow-ups `f9b85bccca` and `545aad8583`.
-
-The symptom the user reported, "the preview opens on the first chapters instead of the one I was
-reading", traces to `f1abb58fac`, which made `rebuildPageGrid()` iterate `batchedItems()` instead of
-`filteredItems()`. The grid window seeded at index 0, and the jump to the target happened later via
-`scrollToCurrentPage()` -> `ensureChapterInBatch()`, which returns early while history is still
-loading. Step 1 removes that structure, so the symptom should be gone once verified on device.
+The batch window hid chapters and the glide/anchor machinery re-pinned the viewport on every dataset
+change; anchoring patched the resulting shifts with timing guesses, so each fix moved the bug elsewhere
+(reverts `cbf2dd0564` and `d74e1bf2ef`). The "opens on the first chapters" symptom came from
+`f1abb58fac` making `rebuildPageGrid()` iterate `batchedItems()`: the window seeded at index 0 and the
+jump to the target went through `ensureChapterInBatch()`, which returned early while history loaded.
+Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **pages stay detached after open until a drag** - suspected glide-induced `attachItems = false`, to be
-  re-checked after step 2. Found in the first step 1 audit; not a step 1 regression.
-
-## Step 1 device audit (OPPO CPH1931, debug build of `bd3eaa47a5`)
-
-Manga: Black Clover, 854 chapters. Recents shows last read = Ch. 2, page 11 of 26.
-
-Observed, reproducible on two consecutive opens (waited 3 s and 6 s, state did not change):
-
-- Swipe left opens the panel on the **Ch. 2 section header** ("Pages 26") at the very end of the
-  list. The old "opens on the first chapters" symptom is gone.
-- **No page thumbnails are attached under the Ch. 2 header and no blue marker is visible.** The
-  section state is `Loaded` (`pageCount` 26) but the rows are missing, so the panel is not on page 11.
-- One short vertical drag (60 px) is enough: on the next IDLE `loadVisiblePageSections()` runs, the
-  pages attach and the rest of the chapter appears. So the data is fine; the attach is never retried
-  after the open.
-- Logcat: FATAL 0, crash buffer empty. Back navigation to Library/Recents worked.
-
-Cause, from reading the code: `loadSectionPages` passes `attachItems = !isScrolling` to `onPagesLoaded`.
-While the panel opens, the only thing that leaves the recycler non-IDLE is the glide (`glideTo` /
-`animateToPosition`). If the page list arrives inside that window, `pagesAttached = false` and the
-items are never inserted. The recovery path (`loadVisiblePageSections` -> `attachCachedPages`) needs a
-scroll-state change, `settleAnchorToTop` early-returns while non-IDLE, and the corrections that use
-`scrollToPositionWithOffset` emit no state change. So nothing retries until the user drags. Pre-existing
-bug that the glide used to mask, which step 2 should remove. Still to be confirmed on device after 2c.
-
-Not checked in this pass: that every chapter is reachable by scrolling to the top, filter/sort/back to
-top, chapter-row swipe (read/bookmark). These go into the combined audit after step 2c.
+- **pages stay detached after open until one drag.** First audit (Black Clover, 854 chapters, build
+  `bd3eaa47a5`, reproducible across two opens, last read Ch. 2 page 11 of 26): the panel opened on the
+  Ch. 2 header, which said "Pages 26", but no thumbnails and no marker appeared; one 60 px drag attached
+  them. Cause from the code: `loadSectionPages` hands `attachItems = !isScrolling` to `onPagesLoaded`,
+  and the glide was the only thing leaving the recycler non-IDLE while the panel opens; the retry path
+  needs a scroll-state change. Pre-existing and masked by the glide, not a step 1 regression. Settled by
+  A2 below. Full first-audit report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
 
 ## Next action — one combined device audit (steps 1, 2, 2b, 2c)
 

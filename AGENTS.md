@@ -125,6 +125,7 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 - Agent baru mulai dari: file status topik → `git log --oneline -5` → bagian "Next action" di file status itu. `agents.md` dibaca sekali untuk aturan; setelah itu jangan mengulang diagnosis yang sudah tercatat di file status.
 - **Prompt oper harus pendek (maks ~10 baris)** dan hanya menunjuk file status plus satu langkah berikutnya. Detail uji (daftar periksa, perintah, pohon keputusan) ditulis di file status, bukan ditempel ulang ke prompt. Agent yang mati karena konteks penuh biasanya bukan kekurangan instruksi, melainkan instruksi yang sama disalin tiga tempat.
 - Jangan menyuruh agent memulai dengan membaca file sumber besar sebagai pemanasan. Butuh struktur → skill `codebase-memory` atau subagent yang mengembalikan path + nama simbol.
+- File yang otomatis ikut termuat di setiap sesi (`AGENTS.md`, file status topik) adalah **biaya tetap** untuk agent berikutnya, bukan tempat arsip. Jaga file status di bawah ±100 baris; narasi audit dan diagnosis lama dipadatkan jadi beberapa baris lalu isi lengkapnya ditunjuk lewat git (`git show <commit>:<file>`).
 - Baris `evidence:` ditegakkan oleh `.githooks/commit-msg` untuk commit yang menyentuh `app/src/main/**`. Aktifkan per clone: `git config core.hooksPath .githooks`, atau salin `.githooks/commit-msg` ke `.git/hooks/`.
 
 ## Tooling dan Hemat Token
