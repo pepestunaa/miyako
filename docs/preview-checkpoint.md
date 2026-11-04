@@ -13,7 +13,8 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 3. Do not trust a `PASS` you cannot reproduce: it means someone ran the audit on the device.
 4. `PENDING` means the code changed and compiled but nobody looked at the phone. Not done, and the
    matching `todo.md` box stays unchecked.
-5. Do not re-derive what is already written under "Why the old code was broken" below.
+5. Do not re-derive what is already written under "Why the old code was broken" below, or re-run the
+   device items under "Closed" — both are settled.
 6. Structural questions (`who calls anchorToCurrentPage`, what still depends on a section holder) go
    through the `codebase-memory` skill, or a subagent that returns paths plus symbol names — never a
    manual read of whole files.
@@ -23,16 +24,17 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | step | scope | commit | build | verify |
 |------|-------|--------|-------|--------|
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
-| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — device audit 2026-11-04 (see "Audit result"): its own target (all chapters present T3, filter/sort T4) passed, but T2 and the T4 back-to-top smoothness did not |
-| 2 | remove the glide/anchor machinery | `d1e378bc91` | ok | PENDING — same audit; T2 FAIL is in this area |
-| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `a21864ae59` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
-| 2c | clean up callers in `MangaDetailsController` | `9e4cce9784` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
-| 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | FAIL (user, 2026-11-05) — removed one blocker, T2 unchanged; route: "Next action" |
-| 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | FAIL (user, 2026-11-05) — top row is a thumbnail row now, but Ch. 2's **first** pages (1-9) and page 11 below the fold |
-| 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | this commit | ok | PENDING — T2 target, list in "Next action" |
+| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PASS (user, 2026-11-04) — own target: all 854 chapters present, filter/sort intact |
+| 2 | remove the glide/anchor machinery | `d1e378bc91` | ok | PASS (user, 2026-11-04) — pages attach by themselves on open, no re-animation |
+| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `a21864ae59` | ok | PASS (user, 2026-11-04) — open/close fast and slow, diagonal, vertical: no jump, no flicker |
+| 2c | clean up callers in `MangaDetailsController` | `9e4cce9784` | ok | PASS (agent, 2026-11-04) — startup clean, no regression in the gesture paths it touched |
+| 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | PASS in part (user, 2026-11-05) — removed a real blocker; T2 still failed, the rest of the gate is sound |
+| 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | PASS in part (user, 2026-11-05) — top row became a thumbnail row; the marker was still not on it |
+| 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | PASS (user, 2026-11-05) — page 11's row is the top row, nothing shifts afterwards |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
+| 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — the only open item, see "Next action" |
 
 ## Decisions already made — do not reopen
 
@@ -43,6 +45,12 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
   lands directly on the target with no animation. That is the desired end state.
 - Step 4 items exist because page sections exploded during layout. Disable and measure; do not delete
   on sight.
+- The landing is **a loading rule, not a glide machine**: no anchor state, no `viewportMove`-style
+  flags, no timers, no `postDelayed` chains, no re-animation of the open. That is why 2d/2e/2f are all
+  gate and dataset-order changes.
+- Branch B (row geometry in `ChapterLayoutManager`) is **closed**, decided 2026-11-05 by the on-screen
+  observation that split it from branch A: the marker row was pushed down by inserts above it, which is
+  branch A. It no longer needs a second look.
 
 ## Why the old code was broken (so nobody re-derives it)
 
@@ -55,139 +63,50 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **pages stay detached after open until one drag** — cause was `attachItems = !isScrolling` meeting the
-  glide, which kept the recycler non-IDLE on open. Fixed by step 2: on 2026-11-04 pages attach by
-  themselves. Not closed formally until T2 passes. Full report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
-- **target drifts off screen after the open (T2).** The 2026-11-04 mechanism (chapters above the target)
-  is gone; the 2026-11-05 report is only the target chapter's own pages sitting above the marker. Row 2d
-  removed a real second blocker and did not fix this. Two routes left: "Next action".
-- **scrolling the panel feels heavy (T4, still FAIL 2026-11-05).** Every drag frame runs
+- **scrolling the panel feels heavy (open).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
-  resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame. Not
-  measured yet. `currentPagePosition()` and `sectionPositionOf()` scan the whole list per call too.
+  resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame.
+  `currentPagePosition()` and `sectionPositionOf()` scan the whole list per call too. Not measured, so
+  step 6 starts by cutting the calls, not the algorithms. See "Next action".
+- Closed 2026-11-05: pages stayed detached until one drag (fixed by step 2), and **T2 — the target
+  drifted off screen after the open** (fixed by 2f: `onPagesLoaded` was inserting the chapters above the
+  parked target without consulting the gate, and RecyclerView does not compensate an insert above the
+  anchor). Write-ups: `git show 1aef7fef87:docs/preview-checkpoint.md` and
+  `git show 14079bfb32:docs/preview-checkpoint.md`.
 
-## Next action — T2: the gate fix is not enough, one observation decides the rest
+## Next action — step 6: stop doing per-frame work during a drag
 
-Retest 2026-11-05 on `4118c1ca7d` (Black Clover, 854 chapters, last read Ch. 2 page 11, user report):
+The T2 chain is done, so the old device list (T1 park, T2 attach, T4 filter/sort regression) is
+retired — T4 only ever existed as a regression check for the attach gate, and that gate no longer
+changes. The one item the user has failed twice is the scroll weight, so this is the only open topic.
 
-| item | result |
-|------|--------|
-| T1 parks on Ch. 2 | PASS — parks on the chapter |
-| T1 marker on the top row | FAIL (user, 2026-11-05) — page 11 and its marker are not on the first visible row |
-| T2 auto attach, no stack | FAIL (user, 2026-11-05) — same stack of earlier pages as before |
-| scroll up/down still heavy | FAIL (user, 2026-11-05) — unchanged, own topic, see "Tracked bugs" |
-| `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-05) |
-| `logcat -d -b crash` | empty (agent, 2026-11-05) |
+One step: make `MangaDetailsController`'s preview scroll listener and the `MangaDetailsAdapter` position
+lookups stop rescanning per frame, **without changing what the user sees while dragging** — no UX
+trade-off is authorised here. Read `git show 14079bfb32:docs/preview-checkpoint.md` for the gate rules
+first; `loadVisiblePageSections()` must keep attaching whatever enters the viewport, it must just not
+ask "where is this section?" by walking the whole adapter every time it does.
 
-The gate was measuring the wrong thing and now measures the panel's own top row (`bc58e53595` asked
-`findFirstVisibleItemPosition()`, which `ChapterLayoutManager` overrides with `getFirstPos`, dropping
-every child above the **screen** line `statusInset + mainActionBarSize`; `pages_preview_recycler` has no
-padding, so the header parked at its top was always dropped and the parked target compared as "above the
-viewport"). That much was real. It did not fix T2, so it removed a *second* blocker, not the one the user
-sees. Full write-up of the reasoning: `git show 4118c1ca7d:docs/preview-checkpoint.md`.
+Then one item back from the device, same manga (Black Clover, 854 chapters):
 
-What is still true from the two-file answer: `pendingScrollToCurrent` and `currentPage?.first == chapterId`
-hold (nothing clears the flag outside `maybeScrollToCurrentPage`, and the marker is drawn, so
-`currentPage != null`), and `maybeScrollToCurrentPage` is the only caller of `anchorToCurrentPage` on the
-attach path. So the remaining candidates are narrow:
+- **S1** — open the panel, fling to the end, back to the top, then fling through the chapters list with
+  the panel closed. Expect: the same thumbnails appear while dragging as before; the drag either feels
+  lighter or it does not. Say which, and nothing else.
 
-1. the attach the user sees happens on a path that never calls `maybeScrollToCurrentPage` — `addItems`
-   from `rebuildPageGrid()` (a dataset rebuild keeps the pixel anchor, so the header stays at the top and
-   pages 1-10 appear under it, with **no snap**), reachable through `setChapters` only when
-   `pendingScrollToCurrent` is already false; or
-2. `anchorToCurrentPage` runs and `scrollToPositionWithOffset` does not move the viewport for a page item
-   that sits mid-row (`ChapterLayoutManager`, span 3) — that is branch B and it needs the user's OK.
+If S1 comes back "still heavy", the next move is to measure rather than to guess again: the remaining
+suspect is thumbnail decoding in `ChapterPageHolder`, which is a different file and a different commit.
 
-**Answered 2026-11-05:** the user reports the first row is the Ch. 2 *header text* → route 1, the landing
-never fired. Three holes in the landing path, all in `MangaDetailsAdapter`:
+## Audit results kept for provenance
 
-1. `maybeScrollToCurrentPage` cleared `pendingScrollToCurrent` **before** checking that a marker row
-   exists, so one attach that arrived without a matching marker consumed the only landing.
-2. `rebuildPageGrid()` puts the cached rows into the dataset without any attach call, and
-   `updateDataSet` keeps the pixel anchor — the parked header stays at the top with pages 1-10 under it.
-   The rescue for that lived in `setChapters` only, so a rebuild from `performFilter()` or
-   `setPageGridMode()` never landed. Moved to the end of `rebuildPageGrid()`.
-3. `scrollToCurrentPage()` set `pendingScrollToCurrent = currentPage != null`, so a panel that parked
-   before history arrived stopped waiting for a marker it could not know about yet. Now also pending
-   while `!presenter.historyLoaded`.
-
-No new state, no timers, no anchor flags: all three reuse the existing one-shot `pendingScrollToCurrent`,
-and `rebuildPageGrid → scrollToCurrentPage` does not recurse (no rebuild on that path).
-
-Retest 2026-11-05 on `1aef7fef87` (user report, same manga): the top row is now a thumbnail row, but the
-visible cells are the chapter's **first** pages (1-3, 4-6, 7-9) and page 11 is below the fold. T4 passes
-apart from the heavy scroll. So the panel still ends up parked at the start of Ch. 2.
-
-Also visible in the screenshot: the chapter list is sorted **ascending** (Ch. 0, Ch. 1, Ch. 1, Ch. 2 …),
-so the target section sits near the **top** of the dataset, and Ch. 2 is "Page 11 of 26". The panel's
-recycler *does* carry a top inset (`MangaDetailsController` sets `paddingTop = headerHeight + 8dp`), so
-children at the content top clear `getFirstPos`' threshold — the 2d gate change was a real bug but not
-the one holding T2.
-
-What actually shoves the marker down, and it is a loading rule like the guardrails ask:
-
-- The list is sorted **ascending**, so above Ch. 2 sit Ch. 0, Ch. 1 and Ch. 1 - Page 1. Their page lists
-  are fetched while the panel is still at the top of the list (before the park, or during the prewarm).
-- `onPagesLoaded` inserted its rows **without any gate check** — `isAboveFirstVisibleRow` only guarded
-  `onPageSectionBound`. When those fetches finished after the viewport had parked on Ch. 2, their rows
-  went in *above* the parked row, and RecyclerView does not compensate an insert above the anchor: the
-  target slides down by exactly the rows that arrived. That is the 1-3/1-9 state the user sees.
-- The 2d gate measurement then made it worse: it counted children sitting inside the panel's top padding
-  as the top row. The panel *is* padded (`MangaDetailsController` sets `paddingTop = headerHeight + 8dp`),
-  so `getFirstPos`' app-bar rule was right in spirit and the real bug was comparing it to a child's
-  recycler-local bottom. 2d replaced one wrong line with another: the parked target compared as "above
-  the viewport" and the chapters above it were allowed to attach.
-
-Fix: `onPagesLoaded` holds the insert back when the section is above the panel's content line (the same
-rule as the gate, checked at the one place that mutates the dataset), and the gate's top row ignores
-children that end above `paddingTop`. No new state, no timers, no anchor flags.
-
-Re-run on the device, one line back per item (Black Clover, 854 chapters, last read Ch. 2 page 11):
-
-- **T1** — open the preview panel and let it settle. Expect: the first row is the **thumbnail row that
-  contains page 11** with the marker on it, not the Ch. 2 header. One snap is fine, a second jump is not.
-- **T2** — hold still ~10 s. Expect: Ch. 2 thumbnails fill in by themselves and page 11 stays on the top
-  row; earlier pages of Ch. 2 must not sit above the marker.
-- **T4** — filter, sort (reverse), back to top, scroll to the end. Expect: functionally unchanged; the
-  heavy scroll is the separate tracked bug and not part of this verdict.
-
-Decision tree:
-
-- T1 + T2 pass, crash checks clean → row 2f verify=PASS (user, date), close the T2 bug, then step 3 with
-  the user.
-- Top row is a thumbnail row but not page 11's, and nothing above it belongs to an earlier chapter → the
-  landing fires and `scrollToPositionWithOffset` lands on the wrong row: branch B (`ChapterLayoutManager`
-  row geometry), needs the user's OK.
-- Earlier pages of Ch. 2 or another chapter still sit above the marker → 2f did not hold; record it and
-  stop, do not add a timer, a retry, or a second anchor flag.
-
-## Audit result — 2026-11-04 (Black Clover, 854 chapters, last read Ch. 2 page 11, HEAD `8f0b266f56`, code `9e4cce9784`)
-
-| item | result |
-|------|--------|
-| T1 lands on Ch. 2 | PASS (user, 2026-11-04) |
-| T2 auto attach + marker on page 11 | FAIL (user, 2026-11-04) — attach works, but chapters above load and overlap the target; marker drifts down off screen |
-| T3 all 854 chapters, no gap | PASS (user, 2026-11-04) |
-| T4 filter, sort, top, end | PASS functionally (user, 2026-11-04); back to top scroll heavy / not smooth |
-| T5 swipe row, back | PASS (user, 2026-11-04) |
-| T6 open/close fast+slow, diagonal, vertical | PASS (user, 2026-11-04) — no jump, no flicker |
-| `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-04) |
-| `logcat -d -b crash` | empty (agent, 2026-11-04) |
-
-## Audit result — 2026-11-05 retest on `bc58e53595` (same manga and marker)
-
-| item | result |
-|------|--------|
-| T1 lands on Ch. 2, no animation | PASS (user, 2026-11-05) |
-| T2 auto attach + marker on page 11 | FAIL (user, 2026-11-05) — Ch. 2 thumbnails still stacked on the earlier pages of the same chapter |
-| T4 filter, sort, top, end | PASS functionally (user, 2026-11-05); back to top still heavy |
-
-The user picked branch A on 2026-11-05 (the target chapter's own pages 1-10 sit above the target row,
-rows intact, nothing overlaps); that is the case the "Next action" answer explains. Branch B — real
-overlap from row geometry in `ChapterLayoutManager` — stays closed. Full branch write-up:
-`git show d80b030dc2:docs/preview-checkpoint.md`.
+- 2026-11-04 (`9e4cce9784`, 854-chapter manga): T1 lands on Ch. 2 PASS, T3 all chapters with no gap PASS,
+  T5 swipe row and back PASS, T6 open/close PASS; T2 FAIL; T4 PASS functionally but back-to-top heavy.
+  FATAL 0, crash buffer empty (agent).
+- 2026-11-05 (`bc58e53595`, `4118c1ca7d`, `1aef7fef87`): three retests of the same T2 bug, each one
+  moving the panel closer (header → thumbnail row of pages 1-9 → page 11 on the top row). The last one,
+  on `14079bfb32`, is PASS (user): page 11 on the top row with no shift, thumbnails fill in under it,
+  T4 functionally intact. FATAL 0, crash buffer empty (agent).
 
 ## What is measured, not asserted
 
 `verify: PASS` on step 0 refers to the checks named in the table only. Nothing here claims a RAM or
-smoothness win; the memory claim stays unproven until step 1 and step 5 are compared on device.
+smoothness win; the memory claim stays unproven until step 1 and step 5 are compared on device, and the
+scroll-weight fix stays unproven until S1 says the drag feels lighter.
