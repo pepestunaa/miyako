@@ -149,9 +149,9 @@ class MangaDetailsAdapter(
         if (!pageGridMode || suppressPageLoads) return
         // Attaching pages mutates the layout, which shifts the viewport mid-scroll.
         if (isScrolling) return
-        // Rows inserted above the first visible row are not compensated by RecyclerView, so they
-        // can only push the content the user is looking at.
-        if (pageAttachIsHeldBack(section)) return
+        // The gate is a rule about rows, not about requests: asking for a page list changes nothing in
+        // the dataset, and gating it here is what left a parked chapter sitting on a bare header with
+        // nothing loading until a drag. `attachCachedPages` holds the rows themselves back.
         attachCachedPages(section)
         if (!pageSectionShouldLoad(section)) return
         // Hold back other chapters while the last-read one is still fetching: the panel anchors
@@ -355,6 +355,9 @@ class MangaDetailsAdapter(
 
     fun attachCachedPages(section: ChapterPagesSectionItem) {
         if (section.pagesAttached || !pageGridMode) return
+        // Checked here and not at the caller: this runs again from a post once a layout settles, and a
+        // caller-side check does not travel with that re-entry.
+        if (pageAttachIsHeldBack(section)) return
         val chapterId = section.chapter.id ?: return
         val pages = chapterPages[chapterId] ?: return
         if (pages.isEmpty()) {
