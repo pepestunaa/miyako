@@ -108,6 +108,34 @@ Aturan audit:
 - Hasil audit dilaporkan di akhir sesi — **bukan** ditulis sebagai catatan di `todo.md`.
 - Perubahan non-UI (build/dependency) cukup: build → install → launch → logcat bersih → tidak ada regresi saat startup.
 
+## Checkpoint dan Oper Antar Agent
+
+Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
+
+- Satu baris bukti di body **setiap commit yang mengubah kode**, format tetap:
+
+  ```
+  evidence: build=<ok|fail|n/a> | verify=<PASS|PENDING|N/A> | next=<satu langkah berikutnya>
+  ```
+
+  `verify` = hasil uji yang relevan dengan perubahannya: audit device untuk UI, test atau pengukuran untuk non-UI, `N/A` untuk dokumen.
+- `PENDING` artinya kode berubah dan build lolos, **tetapi belum diuji**. Itu bukan status selesai. Checkbox `todo.md` hanya untuk yang `PASS`.
+- Untuk pekerjaan yang berjalan lebih dari satu commit, jaga satu file status per topik (mis. `docs/preview-checkpoint.md`) berisi tabel langkah → commit → build → verify, dan perbarui di commit yang sama dengan kodenya — jangan menyusul di commit berbeda.
+- Kalau budget atau sisa waktu menipis: tulis checkpoint dan commit **lebih dulu**, baru berhenti. Berhenti tanpa checkpoint memaksa agent berikutnya mencari ulang apa yang sudah kamu tahu.
+- Agent baru mulai dari: `agents.md` → file status topik → `git log --oneline -5`. Setelah itu jangan mengulang diagnosis yang sudah tercatat di file status.
+- Baris `evidence:` ditegakkan oleh `.githooks/commit-msg` untuk commit yang menyentuh `app/src/main/**`. Aktifkan per clone: `git config core.hooksPath .githooks`, atau salin `.githooks/commit-msg` ke `.git/hooks/`.
+
+## Tooling dan Hemat Token
+
+- Pakai skill yang terpasang sebelum eksplorasi manual. Saat ini belum ada MCP server yang dikonfigurasi; kalau nanti ditambah, perlakukan sama.
+  - `codebase-memory` untuk pertanyaan struktural — siapa memanggil X, apa yang dipanggil X, analisis dampak.
+  - `reverse-engineer-anything` untuk membandingkan artefak atau refs dari app acuan (mis. Usagi) ketika sumbernya tidak ada di repo ini.
+  - `deep-research` untuk fakta di luar repo.
+- `Grep` dulu, `Read` kemudian, dan pakai `offset`/`limit`. Jangan membaca file 900 baris untuk mengecek satu fungsi.
+- Pencarian yang butuh lebih dari tiga kueri delegasikan ke subagent, dan minta ringkasan berisi path plus nama simbol, bukan isi file.
+- Jangan memasukkan diff atau logcat penuh ke konteks: pakai `git diff --stat`, `grep -c`, `tail`.
+- Nomor baris di dokumen dan prompt bergeser setiap kali file diedit; rujuk nama simbol, bukan nomor baris.
+
 ## Catatan Git Bash (Windows)
 
 - Set `export MSYS_NO_PATHCONV=1` sebelum perintah adb yang memakai path di dalam device.
@@ -131,3 +159,4 @@ Aturan audit:
 - Menambah catatan di `todo.md`.
 - Push ke `origin` atau memaksa push ke branch mana pun.
 - Menyatakan selesai tanpa build + uji di device (untuk perubahan UI).
+- Berhenti di tengah pekerjaan multi-step tanpa commit checkpoint — itu memaksa agent berikutnya mencari ulang apa yang sudah diketahui.
