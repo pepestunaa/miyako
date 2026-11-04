@@ -31,7 +31,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | PASS in part (user, 2026-11-05) — removed a real blocker, the bug it targeted stayed |
 | 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | PASS in part (user, 2026-11-05) — the top row became a thumbnail row instead of the header |
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
-| 2g | one gate rule for all three dataset mutations, target exempt | this commit | ok | PENDING — B1 in "Next action" is the repeat-open test |
+| 2g | one gate rule for all three dataset mutations, target exempt | `fae961c88c` | ok | FAIL (user, 2026-11-05) — B1 unchanged, B2 and B3 pass. So the push-down is not only an insert problem |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -66,11 +66,10 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **T1 — the last-read row is on top only sometimes (open, two shapes, awaiting 2g).** The user reported
-  both a bare Ch. 2 header that only fills in after a drag, and page 11 settling correctly then dropping,
-  randomly and including on the first open. Two mutation sites explain them: `rebuildPageGrid()` laid
-  cached rows back in without consulting the gate, and the gate held the target's own rows back. Both are
-  now one rule in `pageAttachIsHeldBack`, with the pending-target exception — see "Next action".
+- **T1 — the last-read row is on top only sometimes (open, still FAIL after 2g).** Both shapes are still
+  reported: a bare Ch. 2 header that only fills in after a drag, and page 11 settling then dropping. 2f
+  and 2g closed the insert-above-the-anchor family and B1 did not move, so the lead is the resize family —
+  the state-dependent height of the section header row above the marker. See "Next action" (C1/C2/C3).
 - **scrolling the panel feels heavy (open).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame.
@@ -82,38 +81,31 @@ Steps 1 and 2 removed both mechanisms.
   insert above the anchor). Write-ups: `git show 1aef7fef87:docs/preview-checkpoint.md` and
   `git show 14079bfb32:docs/preview-checkpoint.md`.
 
-## Next action — T1: test the rule on repeated opens
+## Next action — T1: C1/C2/C3, one line decides the family
 
-The user's answer came back with **both** shapes (page 11 on top then dropping, and the Ch. 2 header on
-top with the thumbnails only appearing after a drag), randomly, and including on the first open. That
-combination names the cause rather than a race: the gate lived at one of the two places that mutate the
-dataset, and it treated the target chapter like any other.
+2g changed nothing on B1 (B2 and B3 pass), so the insert rule is not the whole cause. **Result 2026-11-05
+(user): B1 BIG FAIL — same shapes as before; B2 PASS; B3 PASS.**
 
-- `rebuildPageGrid()` laid **every** cached chapter's rows back into the dataset, gate or no gate. It runs
-  from `setChapters`, `performFilter` and `setPageGridMode`, so a rebuild after the landing put the
-  chapters above the target back in and the marker dropped. That is the "page 11 then a shift down".
-- The gate held the **target's own** rows back whenever its header measured above the content line, so
-  nothing could attach and the panel sat on a bare header until a drag. That is the "header on top".
+The suspect the fix never touched: **the section header's height is not stable.**
+`ChapterPagesSectionHolder.bind` toggles `chapter_pages_progress` (18dp) while Loading,
+`chapter_pages_count` ("26 pages") when Loaded with pages, and `chapter_pages_status` ("no pages found" /
+"retry") otherwise, and the header row is `wrap_content` (`chapter_pages_header_item.xml`). Every header
+above the marker grows or shrinks as its state walks Idle → Loading → Loaded, and nothing compensates
+content that changes size above the viewport either. That fits exactly what the fix did not change: random
+per open, gone once everything is loaded (B2, B3), back on a cold open.
 
-One rule now covers both, in one private helper `pageAttachIsHeldBack(section)`: rows never go in above
-the panel's top row, **except** for the chapter the landing still owes the viewport (`pendingScrollToCurrent`
-plus `currentPage` / `anchorChapterId` / `priorityChapterId`). All three mutation sites use it —
-`onPageSectionBound`, `onPagesLoaded` and `rebuildPageGrid` — and the rebuild keeps the rows of any section
-already attached, so it can neither add nor remove content above the anchor. No new state, no timer, no
-retry, no second anchor flag.
+One question, same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line, no screenshot:
+**when page 11 slides down, what appears above it?**
 
-Test on the same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line each, no
-screenshot:
+- **C1** — new *thumbnail rows* appear above it → still an insert, so 2g has a hole in one of its sites.
+- **C2** — nothing new appears, the marker just slides down while the rows above stay identical → a
+  geometry cause: the header resize above, or the panel's `paddingTop` moving when the app bar settles.
+- **C3** — only the *header line* above it changes (a page count shows up, a spinner disappears) and the
+  marker drops by about that much → same family as C2, confirmed by eye, and the smallest fix.
 
-- **B1** — open the preview, let it settle, close it, repeat ~10 times. Expect: page 11's row on top every
-  single time; no open that shows a bare Ch. 2 header, no content that drops after settling.
-- **B2** — after a settle, scroll up to Ch. 0/Ch. 1 and back down. Expect: their thumbnails load as they
-  come into view and page 11 is where you left it when you return.
-- **B3** — filter, then reverse the sort, then clear the filter. Expect: the panel still lands on page 11
-  (or on the target chapter with the reversed order), and no rows above it appear before a drag.
-
-B1 is the verdict for this bug; B2 and B3 are the regression checks for the rule. If B1 fails again, name
-which of the two shapes it was — they are different helpers now, so the answer says which one is wrong.
+C2 or C3 makes the fix a **height-stable header row**, which changes the header's look (a reserved line
+where the count appears), so it needs the user's OK before it is written. C1 keeps it a loading rule and
+the hunt stays inside `pageAttachIsHeldBack` and its three call sites.
 
 ## Step 6, parked behind T1: measure the panel scroll
 
