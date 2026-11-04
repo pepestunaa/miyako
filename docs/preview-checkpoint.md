@@ -33,6 +33,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
 | 2g | one gate rule for all three dataset mutations, target exempt | `fae961c88c` | ok | FAIL (user, 2026-11-05) — B1 unchanged, B2 and B3 pass. So the push-down is not only an insert problem |
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS. Premise of the last three rounds was misread: page 11 never reaches the top row |
+| 2i | keep the viewport through a dataset swap (`updateItems`) | this commit | ok | PENDING — E1 in "Next action" |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -67,10 +68,9 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **T1 — the last-read row is on top only sometimes (open, still FAIL after 2g).** Both shapes are still
-  reported: a bare Ch. 2 header that only fills in after a drag, and page 11 settling then dropping. 2f
-  and 2g closed the insert-above-the-anchor family and B1 did not move, so the lead is the resize family —
-  the state-dependent height of the section header row above the marker. See "Next action" (C1/C2/C3).
+- **T1 — the last-read row is not on the top row (open, still open after 2h).** Screenshot evidence points
+  at the dataset swap in `updateItems` throwing the viewport back to item 0 after the landing ran; 2i keeps
+  it. Verdict for 2i is E1 in "Next action".
 - **scrolling the panel feels heavy (open).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame.
@@ -82,19 +82,41 @@ Steps 1 and 2 removed both mechanisms.
   insert above the anchor). Write-ups: `git show 1aef7fef87:docs/preview-checkpoint.md` and
   `git show 14079bfb32:docs/preview-checkpoint.md`.
 
-## Next action — T1: read the failing screen, stop guessing
+## Next action — T1: the screenshot found it, 2i keeps the viewport through a rebuild
 
 **Verdicts so far (user, 2026-11-05):** 2f FAIL, 2g FAIL, 2h FAIL, while every lazy-load and regression
 item passes (B2/B3/D2 PASS). The premise the last three rounds were built on — "page 11 lands on top and
 then drops" — is **wrong**, the agent misread the report. The fact is: **page 11 is not on the top row from
 the start.** The landing does not put the viewport where it should be; nothing "drifts" afterwards.
 
-That changes what is worth doing. Four consecutive loading-rule fixes have each removed a real bug and
-none of them produced the landing, so the next step is one observation of the failing state itself rather
-than another hypothesis about timing: **one screenshot of the panel left open on Black Clover (854
-chapters, last read Ch. 2 page 11) in the state the user calls FAIL.** From it: what the first row is
-(header of which chapter, or thumbnails of which pages), whether the blue marker badge is visible anywhere
-on screen, and how far below the fold page 11 sits. No new test list, no re-audit.
+**The screenshot (agent, 2026-11-05, `C:/tmp/t1_fail.png`) says what the four text rounds could not:**
+
+- The viewport is at **item 0 of the dataset** — the Ch. 0 header is clipped behind the app bar.
+- Ch. 0 / Ch. 1 / Ch. 1 - Page 1 read **"Pages 189 / 52 / 55"**, so their page lists were fetched, and they
+  have **no thumbnail rows** — exactly what the gate produces for a section above the anchor.
+- **Ch. 2's rows are attached** (pages 1-9 are on screen), and `insertPageItems` always calls
+  `maybeScrollToCurrentPage` right after inserting.
+
+Attached rows plus a viewport parked at item 0 means the landing ran and then **a dataset swap threw the
+viewport away**: `updateItems` → `updateDataSet` scraps every child, and with nothing left to anchor on the
+next layout starts from position 0. The one-shot `pendingScrollToCurrent` was already consumed, so nothing
+re-landed. That is why it looked random — it depends on whether a chapter-list rebuild lands after the
+park — and why B2/B3/D2 passed: once the user scrolls, everything is correct.
+
+2i: `updateItems` captures the first child's position and its offset from `paddingTop` before the swap and
+re-applies it with `scrollToPositionWithOffset` in the same pass. Two local values, gone when the function
+returns — not the `ViewportAnchor` state that step 2b deleted, and not a timer. A rebuild that moves the
+viewport is a bug whatever the landing was going to do.
+
+Test on the same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line each:
+
+- **E1** — open the panel, let it settle ~5 s, do nothing. Expect: page 11's row is the top row and **stays
+  there**; the panel must not end up showing Ch. 0 at the top.
+- **E2** — open, then filter, then clear the filter. Expect: the viewport keeps the row you were looking at
+  instead of jumping to the start of the list.
+
+If E1 still ends at Ch. 0, the swap is not what loses the viewport and the next thing to read is
+`prewarmPreviewPanel` / `setChapters` ordering in `MangaDetailsController`, not the adapter.
 
 Two code facts found along the way, both still true and still worth keeping (they are in `fae961c88c` and
 `c18f85ed5b`):

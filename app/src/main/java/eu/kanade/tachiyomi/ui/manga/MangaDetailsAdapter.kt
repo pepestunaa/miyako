@@ -125,8 +125,16 @@ class MangaDetailsAdapter(
         // FlexibleAdapter skips updateDataSet while a filter is active; filtering is handled by filteredItems().
         val filter = getFilter(String::class.java)
         if (!filter.isNullOrEmpty()) setFilter("")
+        // A dataset swap takes the viewport with it: once every child is scrapped there is nothing left to
+        // anchor on and the next layout starts from item 0, so a rebuild after a landing throws the landing
+        // away. Hand the row the user is looking at back to the same layout pass.
+        val layoutManager = recyclerView?.layoutManager
+        val anchor = layoutManager?.getChildAt(0)?.let { layoutManager.getPosition(it) to (it.top - layoutManager.paddingTop) }
         updateDataSet(items, false)
         if (!filter.isNullOrEmpty()) setFilter(filter)
+        if (anchor != null) {
+            (layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(anchor.first, anchor.second)
+        }
     }
 
     fun pageSectionShouldLoad(section: ChapterPagesSectionItem): Boolean {
