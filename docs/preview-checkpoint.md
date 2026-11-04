@@ -58,7 +58,7 @@ Steps 1 and 2 removed both mechanisms.
 - **target drifts off screen after the open (T2, seen 2026-11-04).** Pages attach on their own, but
   the chapters above the target also load their pages; the target's thumbnails end up overlapped or
   stacked under the chapters above, and the blue marker keeps moving down until it leaves the screen.
-  User observation only; cause not investigated.
+  User observation only; cause not investigated. Attach gate `bc58e53595` did not fix it (retest 2026-11-05): the stacking is among pages of the target chapter itself.
 - **back to top feels heavy and not smooth (T4, 2026-11-04).** Functionally correct, scroll is janky.
   Not measured; may be the same dataset-change cost as the bug above or the step 4 loader chain.
 
@@ -75,30 +75,25 @@ Steps 1 and 2 removed both mechanisms.
 | `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-04) |
 | `logcat -d -b crash` | empty (agent, 2026-11-04) |
 
-## Next action — device retest of the two-part attach gate (user runs T1, T2, T4)
+## Next action — T2 still fails after the attach gate: new diagnosis needed
 
-Code is in (commit `git log --grep 'attach gate'`), built and installed, launch only. Rows for steps 1, 2,
-2b and 2c stay PENDING until the user reports T2 and the T4 smoothness.
+Retest 2026-11-05 on `bc58e53595` (Black Clover, 854 chapters, last read Ch. 2 page 11):
 
-What changed, in `MangaDetailsAdapter`:
+| item | result |
+|------|--------|
+| T1 lands on Ch. 2, no animation | PASS (user, 2026-11-05) |
+| T2 auto attach + marker on page 11 | FAIL (user, 2026-11-05) — Ch. 2 thumbnails are still stacked on the earlier pages of the same chapter |
+| T4 filter, sort, top, end | same as 2026-11-04 (user, 2026-11-05): functionally fine, back to top still heavy |
 
-- `onPageSectionBound` ignores a section whose position is above `findFirstVisibleItemPosition()`
-  (`isAboveFirstVisibleRow`). Rows inserted above are not compensated by RecyclerView; step 2b removed
-  the anchor on purpose, so this gate is what keeps the target in place.
-- `loadVisiblePageSections` waits for `doOnNextLayout` while a layout is pending, so the open and warm
-  paths no longer walk the pre-jump children. `scrollToCurrentPage` ends with that pass instead of a
-  direct `onPageSectionBound`.
+What this changes: the stacking is inside the target chapter, not chapters above it. The gate in
+`onPageSectionBound` (`isAboveFirstVisibleRow`) and the layout-aware `loadVisiblePageSections` are in the
+code, but they did not fix T2, so the mechanism recorded in the 2026-11-04 audit is at best incomplete.
+Cause not known; do not assume one. Do not claim T2 fixed, and do not revert the gate without a reason.
 
-Checklist (Black Clover, 854 chapters, last read Ch. 2 page 11). Reply one line per item:
-
-1. **T1** open the preview from the detail page (swipe). Expect: it lands on Ch. 2, no animation.
-2. **T2** wait 3 s without touching. Expect: Ch. 2 thumbnails attach by themselves, the blue marker stays
-   on page 11 and on screen, nothing stacks on or above the target.
-3. **T4** filter, sort, back to top, to the end. Expect: still correct; back to top is smoother than the
-   2026-11-04 audit. Say "same" or "better", no cause.
-
-If T4 is still heavy, the next step is item 3 of the old plan: `currentPagePosition()` and
-`sectionPositionOf()` scan every item per call; fix that as step 5 work in its own commit.
+Next step, in a fresh thread: diagnose why one chapter's thumbnails overlap each other after the open
+(layout manager span/height handling versus insert order), starting from `ChapterLayoutManager`,
+`ChapterPageHolder` and `insertPageItems`. One screenshot of the failing state is allowed for that.
+The T4 per-call scans (`currentPagePosition()`, `sectionPositionOf()`) stay step 5 work.
 
 Guardrails: no anchor state, no `viewportMove`-style flags, no timers, no `postDelayed` chains, no
 re-animation of the open. This is the loading rule step 5 keeps, not a second glide machine.
