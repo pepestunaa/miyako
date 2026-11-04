@@ -19,7 +19,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | step | scope | commit | build | verify |
 |------|-------|--------|-------|--------|
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
-| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — the "opens on the first chapters" symptom has not been re-checked on device |
+| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | FAIL — see "Step 1 device audit" below; the grid lands on the right chapter but its pages do not attach |
 | 2 | remove the glide/anchor machinery | — | — | — |
 | 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | — | — | — |
 | 2c | clean up callers in `MangaDetailsController` | — | — | — |
@@ -49,6 +49,33 @@ reading", traces to `f1abb58fac`, which made `rebuildPageGrid()` iterate `batche
 `filteredItems()`. The grid window seeded at index 0, and the jump to the target happened later via
 `scrollToCurrentPage()` -> `ensureChapterInBatch()`, which returns early while history is still
 loading. Step 1 removes that structure, so the symptom should be gone once verified on device.
+
+## Step 1 device audit (OPPO CPH1931, debug build of `bd3eaa47a5`)
+
+Manga: Black Clover, 854 chapters. Recents shows last read = Ch. 2, page 11 of 26.
+
+Observed, reproducible on two consecutive opens (waited 3 s and 6 s, state did not change):
+
+- Swipe left opens the panel on the **Ch. 2 section header** ("Pages 26") at the very end of the
+  list. The old "opens on the first chapters" symptom is gone.
+- **No page thumbnails are attached under the Ch. 2 header and no blue marker is visible.** The
+  section state is `Loaded` (`pageCount` 26) but the rows are missing, so the panel is not on page 11.
+- One short vertical drag (60 px) is enough: on the next IDLE `loadVisiblePageSections()` runs, the
+  pages attach and the rest of the chapter appears. So the data is fine; the attach is never retried
+  after the open.
+- Logcat: FATAL 0, crash buffer empty. Back navigation to Library/Recents worked.
+
+Likely cause (inference, not yet proven): `onPagesLoaded(attachItems = !isScrolling)` runs while
+`scrollToCurrentPage()` is still settling and sets `pagesAttached = false`. Nothing re-attaches because
+the only retry is `onPageSectionBound` (needs a bind) or `loadVisiblePageSections()` on a scroll IDLE
+transition, and a programmatic `scrollToPosition` produces none. Not checked whether this exists at
+`545aad8583` as well; the glide used to cause scroll-state changes that may have masked it.
+
+Not checked in this pass: that every chapter is reachable by scrolling to the top, filter/sort/back to
+top, chapter-row swipe (read/bookmark). Do those after the attach problem is understood.
+
+Next: find why pages stay detached after open (`onPagesLoaded`, `attachCachedPages`,
+`scrollToCurrentPage`) and fix it before step 2, or confirm step 2 removes the cause.
 
 ## What is measured, not asserted
 
