@@ -15,7 +15,6 @@ Yōkai's core reading, library, and source features remain available:
 - Trackers for MyAnimeList, AniList, Kitsu, MangaUpdates, Shikimori, and Bangumi
 - Categories, library updates, and backups
 - Local source support with `ComicInfo.xml`
-- NSFW filter
 - TachiyomiJ2K features such as the staggered library, dynamic categories, recents, statistics, and
   shortcuts
 
