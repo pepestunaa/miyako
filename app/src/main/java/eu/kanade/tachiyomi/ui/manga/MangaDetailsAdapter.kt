@@ -72,10 +72,6 @@ class MangaDetailsAdapter(
         this.items = items ?: emptyList()
         if (pageGridMode) {
             rebuildPageGrid()
-            // The panel may have opened before history loaded; re-anchor now that it has.
-            if (pendingScrollToCurrent && presenter.historyLoaded) {
-                scrollToCurrentPage()
-            }
         } else {
             performFilter()
         }
@@ -111,6 +107,11 @@ class MangaDetailsAdapter(
             }
         }
         updateItems(gridItems)
+        // A rebuild can add the target chapter's rows without any attach call running, and it keeps
+        // the pixel anchor, so the panel would stay parked on the header. Apply a waiting landing.
+        if (pendingScrollToCurrent && presenter.historyLoaded) {
+            scrollToCurrentPage()
+        }
     }
 
     private fun updateItems(items: List<IFlexible<*>>) {
@@ -222,9 +223,9 @@ class MangaDetailsAdapter(
             return
         }
         // The current chapter's thumbnails may not be loaded yet: park on its section and
-        // jump to the page itself once they attach. Without a page marker the section is
-        // already the destination, so there is nothing left to wait for.
-        pendingScrollToCurrent = currentPage != null
+        // jump to the page itself once they attach. A finished chapter is already the
+        // destination, so only a marker history has not delivered yet is worth waiting for.
+        pendingScrollToCurrent = currentPage != null || !presenter.historyLoaded
         val sectionPosition = sectionPositionOf(chapterId)
         val section = sectionPosition?.let { getItem(it) as? ChapterPagesSectionItem }
         if (sectionPosition == null || section == null) {
@@ -268,8 +269,8 @@ class MangaDetailsAdapter(
 
     private fun maybeScrollToCurrentPage(chapterId: Long) {
         if (!pendingScrollToCurrent || currentPage?.first != chapterId) return
-        pendingScrollToCurrent = false
         val position = currentPagePosition() ?: return
+        pendingScrollToCurrent = false
         anchorToCurrentPage(position)
     }
 

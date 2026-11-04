@@ -28,6 +28,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `a21864ae59` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
 | 2c | clean up callers in `MangaDetailsController` | `9e4cce9784` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
 | 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | FAIL (user, 2026-11-05) — removed one blocker, T2 unchanged; route: "Next action" |
+| 2e | land from the data path: pending survives a miss, rebuild applies it | this commit | ok | PENDING — T2 target, list in "Next action" |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -96,13 +97,39 @@ attach path. So the remaining candidates are narrow:
 2. `anchorToCurrentPage` runs and `scrollToPositionWithOffset` does not move the viewport for a page item
    that sits mid-row (`ChapterLayoutManager`, span 3) — that is branch B and it needs the user's OK.
 
-**One question decides them, no device session:** after the panel has opened and sat still for ~10 s,
-what is on the very first row — the Ch. 2 *header* ("Chapter 2 / 24 pages"), or a thumbnail row? Header
-means the viewport never moved off the park, so the landing did not fire → route 1. Thumbnail means the
-viewport moved but not to page 11 → route 2 (branch B).
+**Answered 2026-11-05:** the user reports the first row is the Ch. 2 *header text* → route 1, the landing
+never fired. Three holes in the landing path, all in `MangaDetailsAdapter`:
 
-Then: route 1 → make the rebuild path re-land a pending target (reuse `pendingScrollToCurrent`, no new
-state). Route 2 → ask the user before reopening branch B.
+1. `maybeScrollToCurrentPage` cleared `pendingScrollToCurrent` **before** checking that a marker row
+   exists, so one attach that arrived without a matching marker consumed the only landing.
+2. `rebuildPageGrid()` puts the cached rows into the dataset without any attach call, and
+   `updateDataSet` keeps the pixel anchor — the parked header stays at the top with pages 1-10 under it.
+   The rescue for that lived in `setChapters` only, so a rebuild from `performFilter()` or
+   `setPageGridMode()` never landed. Moved to the end of `rebuildPageGrid()`.
+3. `scrollToCurrentPage()` set `pendingScrollToCurrent = currentPage != null`, so a panel that parked
+   before history arrived stopped waiting for a marker it could not know about yet. Now also pending
+   while `!presenter.historyLoaded`.
+
+No new state, no timers, no anchor flags: all three reuse the existing one-shot `pendingScrollToCurrent`,
+and `rebuildPageGrid → scrollToCurrentPage` does not recurse (no rebuild on that path).
+
+Re-run on the device, one line back per item (Black Clover, 854 chapters, last read Ch. 2 page 11):
+
+- **T1** — open the preview panel and let it settle. Expect: the first row is the **thumbnail row that
+  contains page 11** with the marker on it, not the Ch. 2 header. One snap is fine, a second jump is not.
+- **T2** — hold still ~10 s. Expect: Ch. 2 thumbnails fill in by themselves and page 11 stays on the top
+  row; earlier pages of Ch. 2 must not sit above the marker.
+- **T4** — filter, sort (reverse), back to top, scroll to the end. Expect: functionally unchanged; the
+  heavy scroll is the separate tracked bug and not part of this verdict.
+
+Decision tree:
+
+- T1 + T2 pass, crash checks clean → row 2e verify=PASS (user, date), close the T2 bug, then step 3 with
+  the user.
+- First row is a thumbnail row but not page 11's → the landing fires and `scrollToPositionWithOffset`
+  lands on the wrong row: branch B (`ChapterLayoutManager` row geometry), needs the user's OK.
+- First row is still the Ch. 2 header → the landing still never fires; record it and stop, do not add a
+  timer, a retry, or a second anchor flag.
 
 ## Audit result — 2026-11-04 (Black Clover, 854 chapters, last read Ch. 2 page 11, HEAD `8f0b266f56`, code `9e4cce9784`)
 
