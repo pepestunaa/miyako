@@ -155,11 +155,22 @@ class MangaDetailsAdapter(
     }
 
     private fun isAboveFirstVisibleRow(section: ChapterPagesSectionItem): Boolean {
-        val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager ?: return false
-        val firstVisible = layoutManager.findFirstVisibleItemPosition()
-        if (firstVisible == RecyclerView.NO_POSITION) return false
         val position = getGlobalPositionOf(section)
-        return position != -1 && position < firstVisible
+        if (position == -1) return false
+        val recycler = recyclerView ?: return false
+        // Not layoutManager.findFirstVisibleItemPosition(): ChapterLayoutManager overrides it with
+        // getFirstPos, which drops children whose bottom sits above the app bar. That is right for
+        // the chapters list, whose rows are padded below the bar, but the preview panel is not, so
+        // the parked target header measured as "above" its own first visible row.
+        var topRow = RecyclerView.NO_POSITION
+        for (i in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(i) ?: continue
+            if (child.bottom <= 0 || child.top >= recycler.height) continue
+            val childPosition = recycler.getChildAdapterPosition(child)
+            if (childPosition == RecyclerView.NO_POSITION) continue
+            if (topRow == RecyclerView.NO_POSITION || childPosition < topRow) topRow = childPosition
+        }
+        return topRow != RecyclerView.NO_POSITION && position < topRow
     }
 
     fun retryPageSection(section: ChapterPagesSectionItem) {
