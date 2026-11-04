@@ -1,6 +1,6 @@
 #!/bin/sh
-# Require a checkpoint line on commits that touch manga UI / preview code, so a fresh agent can
-# resume from git alone when a session is cut short.
+# Require an evidence line on commits that change app source, so a fresh agent can resume from git
+# alone when a session is cut short. The rule itself lives in agents.md.
 #
 # Activate in this clone:  cp .githooks/commit-msg .git/hooks/commit-msg
 # Activate for every clone: git config core.hooksPath .githooks   (run this yourself)
@@ -20,19 +20,19 @@ else
 	staged=$(git diff --cached --name-only)
 fi
 
-printf '%s\n' "$staged" |
-	grep -q '^app/src/main/java/eu/kanade/tachiyomi/ui/manga/\|^app/src/main/res/layout/manga_details_controller.xml' ||
-	exit 0
+printf '%s\n' "$staged" | grep -q '^app/src/main/' || exit 0
 
-grep -Eq '^step: [0-9]+/[0-9]+ [|] build: .+ [|] device: (PASS|PENDING|FAIL|N/A)' "$msg_file" && exit 0
+grep -Eq '^evidence: build=(ok|fail|n/a) [|] verify=(PASS|PENDING|N/A) [|] next=.+' "$msg_file" && exit 0
 
 cat >&2 <<'EOF'
-Commit rejected: this change touches manga UI / preview code.
+Commit rejected: this change edits app source.
 
-Add one checkpoint line to the commit body:
-	step: 2/6 | build: ok | device: PENDING
+Add one evidence line to the commit body (see "Checkpoint dan Oper Antar Agent" in agents.md):
+	evidence: build=ok | verify=PENDING | next=<one step>
 
-device: PASS is only for a finished on-device audit; use PENDING when the build passed but the
-behaviour has not been checked on the phone. See docs/preview-checkpoint.md
+build:   ok | fail | n/a
+verify:  PASS only after the on-device audit or test for this change actually ran;
+         PENDING when it compiled but was not exercised; N/A for non-behavioural edits.
+next:    the single thing the next session should do.
 EOF
 exit 1
