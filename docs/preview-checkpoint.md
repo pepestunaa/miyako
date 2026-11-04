@@ -92,8 +92,17 @@ Then one item back from the device, same manga (Black Clover, 854 chapters):
   the panel closed. Expect: the same thumbnails appear while dragging as before; the drag either feels
   lighter or it does not. Say which, and nothing else.
 
-If S1 comes back "still heavy", the next move is to measure rather than to guess again: the remaining
-suspect is thumbnail decoding in `ChapterPageHolder`, which is a different file and a different commit.
+"Feels lighter" alone is not a result, so take one number before and one after, same gesture, and report
+both — the output is two lines:
+
+```sh
+adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai reset   # then do the fling
+adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai | grep -E "Janky frames|Total frames"
+```
+
+If S1 comes back "still heavy" and the jank percentage did not move, the per-frame scans were not the
+cost. The next move is then to measure rather than guess again: the remaining suspect is thumbnail
+decoding in `ChapterPageHolder`, which is a different file and a different commit.
 
 ## Audit results kept for provenance
 
@@ -109,4 +118,4 @@ suspect is thumbnail decoding in `ChapterPageHolder`, which is a different file 
 
 `verify: PASS` on step 0 refers to the checks named in the table only. Nothing here claims a RAM or
 smoothness win; the memory claim stays unproven until step 1 and step 5 are compared on device, and the
-scroll-weight fix stays unproven until S1 says the drag feels lighter.
+scroll-weight fix stays unproven until S1 reports both a felt verdict and a jank number that moved.
