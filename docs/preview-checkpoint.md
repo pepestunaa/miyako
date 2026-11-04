@@ -32,7 +32,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | PASS in part (user, 2026-11-05) — the top row became a thumbnail row instead of the header |
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
 | 2g | one gate rule for all three dataset mutations, target exempt | `fae961c88c` | ok | FAIL (user, 2026-11-05) — B1 unchanged, B2 and B3 pass. So the push-down is not only an insert problem |
-| 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | this commit | ok | PENDING — D1 in "Next action" |
+| 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS. Premise of the last three rounds was misread: page 11 never reaches the top row |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -82,45 +82,34 @@ Steps 1 and 2 removed both mechanisms.
   insert above the anchor). Write-ups: `git show 1aef7fef87:docs/preview-checkpoint.md` and
   `git show 14079bfb32:docs/preview-checkpoint.md`.
 
-## Next action — T1: D1/D2 after 2h closed the two gate holes
+## Next action — T1: read the failing screen, stop guessing
 
-2g changed nothing on B1 (B2 and B3 pass), so the insert rule is not the whole cause. **Result 2026-11-05
-(user): B1 BIG FAIL — same shapes as before; B2 PASS; B3 PASS.**
+**Verdicts so far (user, 2026-11-05):** 2f FAIL, 2g FAIL, 2h FAIL, while every lazy-load and regression
+item passes (B2/B3/D2 PASS). The premise the last three rounds were built on — "page 11 lands on top and
+then drops" — is **wrong**, the agent misread the report. The fact is: **page 11 is not on the top row from
+the start.** The landing does not put the viewport where it should be; nothing "drifts" afterwards.
 
-The suspect the fix never touched: **the section header's height is not stable.**
-`ChapterPagesSectionHolder.bind` toggles `chapter_pages_progress` (18dp) while Loading,
-`chapter_pages_count` ("26 pages") when Loaded with pages, and `chapter_pages_status` ("no pages found" /
-"retry") otherwise, and the header row is `wrap_content` (`chapter_pages_header_item.xml`). Every header
-above the marker grows or shrinks as its state walks Idle → Loading → Loaded, and nothing compensates
-content that changes size above the viewport either. That fits exactly what the fix did not change: random
-per open, gone once everything is loaded (B2, B3), back on a cold open.
+That changes what is worth doing. Four consecutive loading-rule fixes have each removed a real bug and
+none of them produced the landing, so the next step is one observation of the failing state itself rather
+than another hypothesis about timing: **one screenshot of the panel left open on Black Clover (854
+chapters, last read Ch. 2 page 11) in the state the user calls FAIL.** From it: what the first row is
+(header of which chapter, or thumbnails of which pages), whether the blue marker badge is visible anywhere
+on screen, and how far below the fold page 11 sits. No new test list, no re-audit.
 
-**Answer 2026-11-05 (user): C1 — new thumbnail rows appear above page 11, and the bare-header shape is
-still there.** So it is still an insert, and 2g had two holes, both closed by 2h:
+Two code facts found along the way, both still true and still worth keeping (they are in `fae961c88c` and
+`c18f85ed5b`):
 
-- `attachCachedPages` can re-enter itself from `recycler.post { if (!isScrolling) ... }` when the recycler
-  is mid-layout. The gate was checked by its **caller**, and a caller-side check does not travel with that
-  re-entry, so those rows went in above the anchor. The check now sits at the top of `attachCachedPages`.
-- `onPageSectionBound` put the gate **before the fetch**, not merely before the attach, so a section that
-  measured above the top row never requested its page list at all. That is the bare header that only fills
-  in after a drag. A page-list request mutates no rows, so the gate left that path.
+- `attachCachedPages` re-enters itself from `recycler.post { if (!isScrolling) ... }` when the recycler is
+  mid-layout, so a caller-side gate does not travel with that re-entry. The gate now sits on the function.
+- `onPageSectionBound` had the gate in front of the page-list **request**, so a section measured above the
+  top row never fetched at all. A request mutates no rows, so the gate left that path.
 
-The header-height suspicion stays on record because it is true (`chapter_pages_progress` 18dp while
-Loading, `chapter_pages_count` when Loaded, `wrap_content` header), but C1 says rows arrive above the
-anchor, so a resize is not this blocker. It returns only if a round reports a shift with nothing new above
-the marker.
-
-Test again on the same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line each:
-
-- **D1** — open, settle, close, repeat ~10 times. Expect: page 11's row on top every time, **no new
-  thumbnail rows appearing above it**, and no open that shows a bare Ch. 2 header.
-- **D2** — scroll up to Ch. 0/Ch. 1 and back down. Expect: their thumbnails load as they come into view and
-  page 11 is where you left it. (B2 passed; this is the check that the un-gated fetch broke nothing.)
-
-If D1 still shows rows above the marker, the remaining candidate is the order inside `onPagesLoaded`: the
-gate reads the viewport while a pending jump has not laid out yet. If D1 still shows a bare header, the
-target's exemption is not reaching it, which means `pendingScrollToCurrent` is false on that path — check
-`scrollToCurrentPage`'s `currentPage != null || !historyLoaded` before touching anything else.
+Also true, not currently the blocker: `ChapterPagesSectionHolder.bind` toggles `chapter_pages_progress`
+(18dp) while Loading, `chapter_pages_count` when Loaded and `chapter_pages_status` otherwise, on a
+`wrap_content` header (`chapter_pages_header_item.xml`) — so a header above the marker does change height
+with its state. If the screenshot shows the marker row *present but sitting mid-row* or the wrong chapter
+on top, that is the `ChapterLayoutManager` geometry question (branch B), and it needs the user's OK to
+reopen.
 
 ## Step 6, parked behind T1: measure the panel scroll
 
