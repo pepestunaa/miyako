@@ -105,8 +105,31 @@ Aturan audit:
 
 - Compile sukses bukan bukti fitur benar; perubahan UI wajib diuji di device.
 - Jangan menguji berlebihan saat user sedang memakai HP.
+- Siapa yang memegang HP dan siapa yang membaca log: lihat bagian **Pembagian Kerja: User dan Agent**.
 - Hasil audit dilaporkan di akhir sesi — **bukan** ditulis sebagai catatan di `todo.md`.
 - Perubahan non-UI (build/dependency) cukup: build → install → launch → logcat bersih → tidak ada regresi saat startup.
+
+## Pembagian Kerja: User dan Agent (Audit Device)
+
+Kesepakatan: **user yang menguji di HP, agent yang menguji di teks dan di kode.** Sesi audit yang
+menyerahkan seluruhnya ke agent sudah tiga kali mati kehabisan konteks — bukan karena instruksi kurang,
+tetapi karena screenshot, output gradle, dan dump logcat menumpuk di satu thread yang tidak bisa dibuang.
+
+- Agent menulis langkah uji sebagai daftar bernomor dengan hasil yang diharapkan, **di file status
+  topik**, bukan di prompt atau chat.
+- Agent hanya melakukan yang berupa baris teks: build, install, `logcat -c`, `logcat -d | grep -c FATAL`,
+  `logcat -d -b crash`. Tidak ada gestur layar di sisi agent kecuali user menyatakan tidak bisa pegang HP.
+- User menjalankan daftar itu dan mengirim balik **satu baris per butir**: `T2 FAIL — header Ch. 2,
+  thumbnail tetap kosong sampai digeser`. Hanya apa yang terlihat; tanpa dugaan penyebab.
+- Agent mencatat hasil dengan provenance di file status: `PASS (user, YYYY-MM-DD)`. `PASS` tanpa
+  penanda siapa dianggap belum diuji. Provenance hanya di file status — baris `evidence:` di commit harus
+  tetap `verify=<PASS|PENDING|N/A>` polos, kalau tidak hook `commit-msg` menolaknya.
+- Audit yang sudah tercatat terverifikasi **tidak diulang**. Butuh angka tambahan? Minta satu butir
+  spesifik, bukan satu sesi uji ulang.
+- Screenshot dibaca maksimal satu per butir, dan hanya kalau laporan user ambigu. Gambar adalah biaya
+  konteks termahal di sesi audit.
+- Kalau user berhalangan: agent boleh mengaudit sendiri dengan batas tegas — build → install → cek
+  foreground → maksimal 7 interaksi → selesai, lalu commit checkpoint. Mode ini lambat dan boros; bukan default.
 
 ## Checkpoint dan Oper Antar Agent
 
