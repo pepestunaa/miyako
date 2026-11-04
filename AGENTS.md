@@ -136,6 +136,24 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 - Jangan memasukkan diff atau logcat penuh ke konteks: pakai `git diff --stat`, `grep -c`, `tail`.
 - Nomor baris di dokumen dan prompt bergeser setiap kali file diedit; rujuk nama simbol, bukan nomor baris.
 
+## Referensi di Luar Repo (boleh dibaca, jangan diubah)
+
+Acuan implementasi sudah ada di direktori induk `D:/coding/`. Cek ini dulu sebelum menulis perilaku UI baru atau menebak cara kerja fork lain:
+
+| Lokasi | Isi | Pakai untuk |
+|--------|-----|-------------|
+| `D:/coding/_refs/yokai-upstream/` | `null2264/yokai` (HEAD `843a59b`) | perilaku asli Yōkai sebelum disentuh fork; pembanding kompatibilitas dan sumber kode bawaan saat mengecek "dulu bagaimana" |
+| `D:/coding/_refs/tachiyomisy/` | `jobobby04/TachiyomiSY` (HEAD `c1eb1e3`) | desain halaman pages/preview dan slider menu grid yang jadi acuan user |
+| `D:/coding/Usagi/` | `UsagiApp/Usagi` (HEAD `ae98217`) | strategi loader preview hemat RAM, window halaman, dan ukuran "mulus" yang dijadikan referensi rasa app |
+
+Cara membacanya:
+
+- **Read-only.** Tiga direktori itu bukan bagian project ini — jangan pernah mengedit, menjalankan build, atau membuat commit di dalamnya.
+- Gunakan `Grep` dengan `path` ke direktori target (mis. `path: D:/coding/Usagi/app`), lalu `Read` pakai `offset`/`limit`. Jangan `find` dari `/`; pohonnya besar dan memakan waktu.
+- Kutip `path` plus nama simbol di laporan atau body commit, jangan menyalin satu file utuh ke repo ini.
+- HEAD di atas dicatat saat aturan ini ditulis dan checkout itu bisa tertinggal dari upstream. Sebutkan hash yang dibaca supaya perbandingan bisa diulang agent berikutnya.
+- Mengadopsi perilaku dari sana tetap harus lolos aturan fork: UI/UX Yōkai tidak berubah dan fitur yang ada tidak dibuang.
+
 ## Catatan Git Bash (Windows)
 
 - Set `export MSYS_NO_PATHCONV=1` sebelum perintah adb yang memakai path di dalam device.
