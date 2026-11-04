@@ -109,6 +109,29 @@ above its own top row. A1 = shift → candidate 2, close the remaining insert pa
 3, that is a dataset-order question, not a new mechanism. A1 with "first open only" or "repeat only"
 tells the same story from the side. Nothing here needs a timer, a retry, or a second anchor flag.
 
+## Step 6, parked behind T1: measure the panel scroll
+
+One step: make `MangaDetailsController`'s preview scroll listener and the `MangaDetailsAdapter` position
+lookups stop rescanning per frame, **without changing what the user sees while dragging** — no UX
+trade-off is authorised here. `loadVisiblePageSections()` must keep attaching whatever enters the
+viewport, it must just not ask "where is this section?" by walking the whole adapter every time.
+
+- **S1** — open the panel, fling to the end, back to the top, then fling through the chapters list with
+  the panel closed. Expect: the same thumbnails appear while dragging as before; the drag either feels
+  lighter or it does not. Say which, and nothing else.
+
+"Feels lighter" alone is not a result, so take one number before and one after, same gesture, and report
+both — the output is two lines:
+
+```sh
+adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai reset   # then do the fling
+adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai | grep -E "Janky frames|Total frames"
+```
+
+If S1 comes back "still heavy" and the jank percentage did not move, the per-frame scans were not the
+cost. The next move is then to measure rather than guess again: the remaining suspect is thumbnail
+decoding in `ChapterPageHolder`, which is a different file and a different commit.
+
 ## Audit results kept for provenance
 
 - 2026-11-04 (`9e4cce9784`, 854-chapter manga): T1 lands on Ch. 2 PASS, T3 all chapters with no gap PASS,
@@ -123,4 +146,4 @@ tells the same story from the side. Nothing here needs a timer, a retry, or a se
 
 `verify: PASS` on step 0 refers to the checks named in the table only. Nothing here claims a RAM or
 smoothness win; the memory claim stays unproven until step 1 and step 5 are compared on device, and the
-scroll fix stays unproven until the user says the drag feels lighter.
+scroll fix stays unproven until S1 reports both a felt verdict and a jank number that moved.
