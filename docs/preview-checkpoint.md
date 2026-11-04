@@ -62,29 +62,41 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Next action — one combined device audit (steps 1, 2, 2b, 2c)
 
-Black Clover, 854 chapters, last read = Ch. 2, page 11 of 26. Build / install / logcat commands are in
-the "Audit E2E" section of `agents.md`. The user may be using this phone: check the foreground app
-first and take short, controlled snapshots. Report one line per item, with what was observed.
+Black Clover, 854 chapters, last read = Ch. 2, page 11 of 26. Division of labour: "Pembagian Kerja:
+User dan Agent" in `agents.md`.
 
-- A1 the preview opens on the last-read chapter, not on the first chapters
-- A2 thumbnails attach on their own with no drag, and the blue marker sits on Ch. 2 page 11 — this is
-  the tracked bug above: the first audit showed "Pages 26" in the header and no rows until a 60 px drag
-- A3 scrolling to the very top reaches all 854 chapters, no window anywhere
-- A4 filter, sort, back to top, scroll to end
-- A5 chapter-row swipe (read / bookmark) on the main list, and back navigation
-- A6 fast and slow open/close, repeated open/close, diagonal drag, vertical drag
-- A7 `FATAL` count 0 and the crash buffer empty
+Agent does, in this order, and nothing else on the phone:
+
+1. Confirm HEAD is still `9e4cce9784` and the built APK is current; rebuild only if the tree moved
+   (commands in the "Build dan Verifikasi di Device" section of `agents.md`).
+2. Install it and hand the phone to the user: `adb -s d89608bf install -r <apk>`, `logcat -c`.
+3. Post the T1-T6 list below to the user verbatim, then stop and wait.
+4. When the report arrives, run the text checks: `logcat -d | grep -c FATAL` and `logcat -d -b crash`.
+5. Record each result here with provenance (`PASS (user, <date>)`), commit the docs, then follow the
+   decision tree. Do not read the source files while waiting; that is what overflowed the last threads.
+
+The user does, on the phone, one line back per item (`T2 FAIL — header Ch. 2, masih tidak ada
+thumbnail sampai digeser`):
+
+- T1 open the preview → it lands on the last-read chapter (Ch. 2), not on the first chapters
+- T2 wait ~5 s without touching the screen → thumbnails attach on their own and the blue marker sits
+  on Ch. 2 page 11 — this is the tracked bug above, so this item is the reason the audit exists
+- T3 scroll to the very top → all 854 chapters are there, no gap, no window
+- T4 filter, sort, back to top, scroll to end → all behave
+- T5 swipe a chapter row (read / bookmark), then press back → nothing broken outside the preview
+- T6 open and close the panel fast and slowly, diagonal drag, vertical drag → no jump, no flicker
 
 Decision tree:
 
-- All PASS → set verify=PASS for steps 1, 2, 2b and 2c here, close the tracked bug, check the matching
-  boxes in `todo.md`, commit the docs, then stop and ask the user before step 4.
-- Only A2 fails → the glide was not the cause. `loadSectionPages` hands `attachItems = !isScrolling` to
+- All T1-T6 pass and the crash checks are clean → set verify=PASS (user, <date>) for steps 1, 2, 2b and
+  2c here, close the tracked bug, check the matching boxes in `todo.md`, commit the docs, then stop and
+  ask the user before step 4.
+- Only T2 fails → the glide was not the cause. `loadSectionPages` hands `attachItems = !isScrolling` to
   `onPagesLoaded`, and the else-branch leaves `pagesAttached = false` with no retry because
   `loadVisiblePageSections` only runs on a scroll-state change. Make the open path re-attach cached
-  pages once — no timer, no poll loop, no extra `postDelayed` chain. Own commit, then re-run A1 and A2.
-- A3-A7 fail → step 1 regression: record the exact symptom here, leave the boxes unchecked, stop, report.
-- Any crash → stop immediately and report the stack trace from the crash buffer.
+  pages once — no timer, no poll loop, no extra `postDelayed` chain. Own commit, then re-run T1 and T2.
+- T1, T3-T6 fail → step 1 regression: record the exact symptom here, leave the boxes unchecked, stop, report.
+- The crash checks find anything → stop immediately and report the stack trace from the crash buffer.
 
 ## What is measured, not asserted
 
