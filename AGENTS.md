@@ -68,7 +68,8 @@ app/build/outputs/apk/standard/debug/app-standard-arm64-v8a-debug.apk
 - adb: `/c/platform-tools/adb.exe`.
 - Install: `adb -s d89608bf install -r <apk>`.
 - Screenshot: `adb -s d89608bf exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
-- Tag logcat untuk panel preview: `YokaiPanel`. Cek crash dengan logcat `FATAL`.
+- Jangan menambah `Log.d` untuk mengaudit: diagnostik preview sudah dibuang dan audit dibaca dari perilaku
+  di layar plus `FATAL` / buffer crash, bukan dari tag log.
 - Jangan menguji berlebihan saat user sedang memakai HP; ambil snapshot singkat dan terkontrol.
 
 ## Audit E2E
@@ -83,23 +84,13 @@ Setiap perubahan fitur/UI wajib melewati audit end-to-end di device fisik sebelu
    adb -s d89608bf shell am start -n eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy
    ```
 
-3. Uji golden path fitur yang berubah. Contoh untuk panel preview halaman:
-   - Buka Library → pilih manga → halaman detail.
-   - Swipe kiri untuk membuka preview; cek marker biru sesuai chapter/halaman terakhir dibaca.
-   - Swipe kanan dan tombol back untuk menutup preview.
-   - Pastikan animasi mulus, tanpa kedip atau lompat posisi.
-4. Uji edge case yang relevan:
-   - Manga tanpa history dan manga yang semua chapternya sudah dibaca.
-   - Manga dengan ratusan chapter (anchor harus ke chapter yang benar).
-   - Swipe cepat dan swipe pelan, gesture diagonal, drag vertikal.
-   - Panel dibuka sebelum history selesai dimuat.
-   - Buka-tutup panel berulang kali.
-5. Ambil screenshot tiap state penting ke `C:/tmp/...` dan baca dengan tool Read untuk verifikasi visual.
-6. Cek crash dan error:
+3. Uji golden path **plus edge case** fitur yang berubah. Langkah konkret tiap topik tidak ditulis di
+   sini — dia hidup di bagian "Next action" file status topik itu, dalam bentuk daftar bernomor.
+4. Cek crash dan error:
    - `adb -s d89608bf logcat -d | grep -c FATAL` harus `0`.
    - Buffer crash harus kosong: `adb -s d89608bf logcat -d -b crash`.
-7. Regression check di sekitar fitur: navigasi back, swipe chapter row (bookmark/read), scroll daftar chapter, tema, dan fitur lain yang menyentuh file yang sama.
-8. Baru setelah lolos audit: commit per topik, check off todo, lalu push.
+5. Regression check di sekitar fitur yang menyentuh file yang sama (navigasi back, gesture list, tema).
+6. Baru setelah lolos audit: commit per topik, check off todo, lalu push.
 
 Aturan audit:
 
