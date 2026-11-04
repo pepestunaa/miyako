@@ -52,11 +52,9 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **pages stay detached after open until one drag** — first audit (build `bd3eaa47a5`), cause from the
-  code: `loadSectionPages` hands `attachItems = !isScrolling` to `onPagesLoaded`; the glide was the only
-  thing keeping the recycler non-IDLE on open. Full report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
-  **Not reproduced on 2026-11-04**: thumbnails now attach by themselves (T2), so the symptom changed
-  into the next bug. Do not close it formally until T2 passes.
+- **pages stay detached after open until one drag** — cause was `attachItems = !isScrolling` meeting the
+  glide, which kept the recycler non-IDLE on open. Fixed by step 2: on 2026-11-04 pages attach by
+  themselves. Not closed formally until T2 passes. Full report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
 - **target drifts off screen after the open (T2, seen 2026-11-04).** Pages attach on their own, but
   the chapters above the target also load their pages; the target's thumbnails end up overlapped or
   stacked under the chapters above, and the blue marker keeps moving down until it leaves the screen.
@@ -77,16 +75,37 @@ Steps 1 and 2 removed both mechanisms.
 | `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-04) |
 | `logcat -d -b crash` | empty (agent, 2026-11-04) |
 
-Neither decision-tree branch fits: it is not "only T2 fails" in the attach sense, so the re-attach fix
-was not applied. Rows for steps 1, 2, 2b, 2c stay PENDING and the `todo.md` boxes stay unchecked.
+## Next action — stop pages from attaching above the top row (T2)
 
-## Next action
+Rows for steps 1, 2, 2b and 2c stay PENDING: T2 and the T4 smoothness are what block them.
 
-Stop and ask the user which to take first; do not start on a guess:
+Mechanism, read from the code at `9e4cce9784`:
 
-1. T2 drift — find what changes the layout above the target after pages load (query the graph for the
-   section holder / `onPagesLoaded` path; do not read whole files). Fix, own commit, re-run T1 and T2 only.
-2. T4 back-to-top smoothness — measure first, then decide whether it belongs to step 4.
+- RecyclerView does not compensate the viewport when rows are inserted above it. That was exactly
+  `withViewportAnchor`'s job, and step 2b deleted it on purpose, so nothing re-pins the target now.
+- `onPageSectionBound` has no position check, and `insertPageItems` adds `pages.size` rows directly under
+  that section's header. Whoever calls it can shift the whole grid.
+- Three callers can reach a section above the target: the section holder binding (a row revealed or
+  prefetched while the grid moves), `loadVisiblePageSections` walking `recycler.childCount` from
+  `onScrolled` on every DRAGGING frame, and the warm path in `MangaDetailsController`, which posts
+  `loadVisiblePageSections()` while `scrollToCurrentPage`'s `scrollToPositionWithOffset` has not laid out
+  yet — so the children it walks are the pre-jump ones at the top of the list.
+- Black Clover is sorted newest-first, so the target sits at the bottom and "above the target" is nearly
+  the whole list: one attach above pushes the target down, which reveals more sections above, which attach
+  in turn. That is the drift, and the same churn is the likeliest cost behind T4's heavy scroll.
+
+Fix, smallest structural form, one commit:
+
+1. In `onPageSectionBound`, ignore a section whose adapter position is above the first visible row of the
+   preview recycler — attaching it can only push what the user is looking at.
+2. Make the open path run its page pass after the jump has laid out, not before.
+3. `currentPagePosition()` and `sectionPositionOf()` scan every item on each call. Only if T4 is still
+   heavy after 1 and 2, deal with them, and treat that as step 5 work in its own commit.
+
+Guardrails: no anchor state, no `viewportMove`-style flags, no timers, no `postDelayed` chains, no
+re-animation of the open. This is the loading rule step 5 keeps, not a second glide machine.
+
+Retest with the user: T1, T2, T4 from the table above — nothing else.
 
 ## What is measured, not asserted
 
