@@ -1,8 +1,9 @@
 # Rencana Optimasi Preview dan Detail Manga
 
-Dokumen ini menjadi acuan implementasi untuk lima pekerjaan yang masih terbuka di
-`todo.md` (baris 46–50). Fokusnya adalah mempertahankan UI/UX Yōkai sambil membuat
-preview lebih ringan, stabil, dan halus.
+> **SUPERSEDED — jangan dibaca sebagai acuan.** Dokumen ini menganjurkan batch window, animasi buka
+> (glide) dan ingatan posisi saat panel dibuka ulang — tiga hal yang justru dihapus Phase A di
+> `todo.md`. Status yang benar ada di `docs/preview-checkpoint.md`. Isi di bawah dibiarkan hanya
+> sebagai riwayat keputusan; kalau sedang mengerjakan preview, berhenti membaca di sini.
 
 ## Tujuan
 

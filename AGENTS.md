@@ -120,12 +120,12 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 
   `verify` = hasil uji yang relevan dengan perubahannya: audit device untuk UI, test atau pengukuran untuk non-UI, `N/A` untuk dokumen.
 - `PENDING` artinya kode berubah dan build lolos, **tetapi belum diuji**. Itu bukan status selesai. Checkbox `todo.md` hanya untuk yang `PASS`.
-- Untuk pekerjaan yang berjalan lebih dari satu commit, jaga satu file status per topik (mis. `docs/preview-checkpoint.md`) berisi tabel langkah → commit → build → verify, dan perbarui di commit yang sama dengan kodenya — jangan menyusul di commit berbeda.
-- Kalau budget atau sisa waktu menipis: tulis checkpoint dan commit **lebih dulu**, baru berhenti. Berhenti tanpa checkpoint memaksa agent berikutnya mencari ulang apa yang sudah kamu tahu.
-- Agent baru mulai dari: file status topik → `git log --oneline -5` → bagian "Next action" di file status itu. `agents.md` dibaca sekali untuk aturan; setelah itu jangan mengulang diagnosis yang sudah tercatat di file status.
-- **Prompt oper harus pendek (maks ~10 baris)** dan hanya menunjuk file status plus satu langkah berikutnya. Detail uji (daftar periksa, perintah, pohon keputusan) ditulis di file status, bukan ditempel ulang ke prompt. Agent yang mati karena konteks penuh biasanya bukan kekurangan instruksi, melainkan instruksi yang sama disalin tiga tempat.
-- Jangan menyuruh agent memulai dengan membaca file sumber besar sebagai pemanasan. Butuh struktur → skill `codebase-memory` atau subagent yang mengembalikan path + nama simbol.
-- File yang otomatis ikut termuat di setiap sesi (`AGENTS.md`, file status topik) adalah **biaya tetap** untuk agent berikutnya, bukan tempat arsip. Jaga file status di bawah ±100 baris; narasi audit dan diagnosis lama dipadatkan jadi beberapa baris lalu isi lengkapnya ditunjuk lewat git (`git show <commit>:<file>`).
+- Untuk pekerjaan lebih dari satu commit, jaga satu file status per topik (mis. `docs/preview-checkpoint.md`): tabel langkah → commit → build → verify, diperbarui di commit yang sama dengan kodenya — jangan menyusul.
+- Kalau budget atau sisa waktu menipis: tulis checkpoint dan commit **lebih dulu**, baru berhenti.
+- Agent baru mulai dari: file status topik → `git log --oneline -5` → bagian "Next action" di file itu. Jangan mengulang diagnosis yang sudah tercatat di sana, dan jangan membuka file sumber besar sebagai pemanasan — pertanyaan struktur dijawab `codebase-memory` atau subagent yang mengembalikan path + nama simbol.
+- **Prompt oper maksimal ~10 baris**: tunjuk file status plus satu langkah berikutnya. Detail uji (daftar periksa, perintah, pohon keputusan) hidup di file status. Yang membunuh agent konteks penuh biasanya bukan kurang instruksi, melainkan instruksi yang sama disalin di prompt + plan + file status.
+- **Satu langkah = satu thread baru.** Thread yang sudah melempar "context too long" tidak bisa diselamatkan dengan pesan yang lebih pendek; mulai thread bersih dan arahkan ke file status.
+- File yang otomatis termuat tiap sesi (`AGENTS.md`, file status topik) adalah **biaya tetap** untuk agent berikutnya, bukan arsip. Jaga file status ±100 baris; narasi audit lama dipadatkan dan isi lengkapnya ditunjuk lewat `git show <commit>:<file>`.
 - Baris `evidence:` ditegakkan oleh `.githooks/commit-msg` untuk commit yang menyentuh `app/src/main/**`. Aktifkan per clone: `git config core.hooksPath .githooks`, atau salin `.githooks/commit-msg` ke `.git/hooks/`.
 
 ## Tooling dan Hemat Token
@@ -151,11 +151,9 @@ Acuan implementasi sudah ada di direktori induk `D:/coding/`. Cek ini dulu sebel
 
 Cara membacanya:
 
-- **Read-only.** Tiga direktori itu bukan bagian project ini — jangan pernah mengedit, menjalankan build, atau membuat commit di dalamnya.
-- Gunakan `Grep` dengan `path` ke direktori target (mis. `path: D:/coding/Usagi/app`), lalu `Read` pakai `offset`/`limit`. Jangan `find` dari `/`; pohonnya besar dan memakan waktu.
-- Kutip `path` plus nama simbol di laporan atau body commit, jangan menyalin satu file utuh ke repo ini.
-- HEAD di atas dicatat saat aturan ini ditulis dan checkout itu bisa tertinggal dari upstream. Sebutkan hash yang dibaca supaya perbandingan bisa diulang agent berikutnya.
-- Mengadopsi perilaku dari sana tetap harus lolos aturan fork: UI/UX Yōkai tidak berubah dan fitur yang ada tidak dibuang.
+- **Read-only.** Jangan pernah mengedit, membangun, atau commit di dalam tiga direktori itu.
+- `Grep` dengan `path` ke direktori target (mis. `path: D:/coding/Usagi/app`), lalu `Read` pakai `offset`/`limit`. Jangan `find` atau `du` dari root parent — pohonnya besar dan pernah membuat command timeout.
+- Kutip `path` + nama simbol + HEAD yang dibaca di laporan atau body commit; jangan menyalin file utuh ke repo ini, dan checkout itu bisa tertinggal dari upstream. Mengadopsi perilaku dari sana tetap harus lolos aturan fork: UI/UX Yōkai tidak berubah, fitur tidak dibuang.
 
 ## Catatan Git Bash (Windows)
 
@@ -166,7 +164,7 @@ Cara membacanya:
 ## Peta Kode Kunci
 
 - `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsController.kt` — gesture halaman detail, panel preview kanan, scrim, magnet swipe, hint sekali.
-- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsAdapter.kt` — grid halaman per chapter, marker halaman terakhir dibaca, anchor + glide.
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsAdapter.kt` — grid halaman per chapter, marker halaman terakhir dibaca, lazy load thumbnail.
 - `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaDetailsPresenter.kt` — data chapters/history, urutan load.
 - `app/src/main/res/layout/manga_details_controller.xml` — layout detail + view scrim preview.
 - `app/src/main/res/drawable/preview_scrim_top.xml`, `preview_scrim_bottom.xml` — gradient scrim.
