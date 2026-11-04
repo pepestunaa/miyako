@@ -159,14 +159,14 @@ class MangaDetailsAdapter(
         val position = getGlobalPositionOf(section)
         if (position == -1) return false
         val recycler = recyclerView ?: return false
-        // Not layoutManager.findFirstVisibleItemPosition(): ChapterLayoutManager overrides it with
-        // getFirstPos, which drops children whose bottom sits above the app bar. That is right for
-        // the chapters list, whose rows are padded below the bar, but the preview panel is not, so
-        // the parked target header measured as "above" its own first visible row.
+        // The panel is padded below the app bar, so a child that ends above that line is behind the
+        // bar and is not content the user is looking at. Letting it define the top row makes the
+        // parked target look "above the viewport" and lets the chapters above it shove it down.
+        val contentTop = recycler.paddingTop
         var topRow = RecyclerView.NO_POSITION
         for (i in 0 until recycler.childCount) {
             val child = recycler.getChildAt(i) ?: continue
-            if (child.bottom <= 0 || child.top >= recycler.height) continue
+            if (child.bottom <= contentTop || child.top >= recycler.height) continue
             val childPosition = recycler.getChildAdapterPosition(child)
             if (childPosition == RecyclerView.NO_POSITION) continue
             if (topRow == RecyclerView.NO_POSITION || childPosition < topRow) topRow = childPosition
@@ -314,12 +314,13 @@ class MangaDetailsAdapter(
         when {
             sectionPosition == -1 || !pageGridMode -> Unit
             pages.isEmpty() -> section.pagesAttached = true
-            attachItems -> {
+            attachItems && !isAboveFirstVisibleRow(section) -> {
                 insertPageItems(section, sectionPosition, pages)
                 section.pagesAttached = true
                 maybeScrollToCurrentPage(chapterId)
             }
-            // Held back while scrolling; attachCachedPages() inserts them when the scroll settles.
+            // Held back while scrolling, or because the list was fetched while its section was above
+            // the viewport: inserting it now would only push the content the user is looking at down.
             else -> section.pagesAttached = false
         }
         section.refreshBoundHolder()

@@ -28,7 +28,8 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `a21864ae59` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
 | 2c | clean up callers in `MangaDetailsController` | `9e4cce9784` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
 | 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | FAIL (user, 2026-11-05) — removed one blocker, T2 unchanged; route: "Next action" |
-| 2e | land from the data path: pending survives a miss, rebuild applies it | this commit | ok | PENDING — T2 target, list in "Next action" |
+| 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | FAIL (user, 2026-11-05) — top row is a thumbnail row now, but Ch. 2's **first** pages (1-9) and page 11 below the fold |
+| 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | this commit | ok | PENDING — T2 target, list in "Next action" |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -113,6 +114,34 @@ never fired. Three holes in the landing path, all in `MangaDetailsAdapter`:
 No new state, no timers, no anchor flags: all three reuse the existing one-shot `pendingScrollToCurrent`,
 and `rebuildPageGrid → scrollToCurrentPage` does not recurse (no rebuild on that path).
 
+Retest 2026-11-05 on `1aef7fef87` (user report, same manga): the top row is now a thumbnail row, but the
+visible cells are the chapter's **first** pages (1-3, 4-6, 7-9) and page 11 is below the fold. T4 passes
+apart from the heavy scroll. So the panel still ends up parked at the start of Ch. 2.
+
+Also visible in the screenshot: the chapter list is sorted **ascending** (Ch. 0, Ch. 1, Ch. 1, Ch. 2 …),
+so the target section sits near the **top** of the dataset, and Ch. 2 is "Page 11 of 26". The panel's
+recycler *does* carry a top inset (`MangaDetailsController` sets `paddingTop = headerHeight + 8dp`), so
+children at the content top clear `getFirstPos`' threshold — the 2d gate change was a real bug but not
+the one holding T2.
+
+What actually shoves the marker down, and it is a loading rule like the guardrails ask:
+
+- The list is sorted **ascending**, so above Ch. 2 sit Ch. 0, Ch. 1 and Ch. 1 - Page 1. Their page lists
+  are fetched while the panel is still at the top of the list (before the park, or during the prewarm).
+- `onPagesLoaded` inserted its rows **without any gate check** — `isAboveFirstVisibleRow` only guarded
+  `onPageSectionBound`. When those fetches finished after the viewport had parked on Ch. 2, their rows
+  went in *above* the parked row, and RecyclerView does not compensate an insert above the anchor: the
+  target slides down by exactly the rows that arrived. That is the 1-3/1-9 state the user sees.
+- The 2d gate measurement then made it worse: it counted children sitting inside the panel's top padding
+  as the top row. The panel *is* padded (`MangaDetailsController` sets `paddingTop = headerHeight + 8dp`),
+  so `getFirstPos`' app-bar rule was right in spirit and the real bug was comparing it to a child's
+  recycler-local bottom. 2d replaced one wrong line with another: the parked target compared as "above
+  the viewport" and the chapters above it were allowed to attach.
+
+Fix: `onPagesLoaded` holds the insert back when the section is above the panel's content line (the same
+rule as the gate, checked at the one place that mutates the dataset), and the gate's top row ignores
+children that end above `paddingTop`. No new state, no timers, no anchor flags.
+
 Re-run on the device, one line back per item (Black Clover, 854 chapters, last read Ch. 2 page 11):
 
 - **T1** — open the preview panel and let it settle. Expect: the first row is the **thumbnail row that
@@ -124,12 +153,13 @@ Re-run on the device, one line back per item (Black Clover, 854 chapters, last r
 
 Decision tree:
 
-- T1 + T2 pass, crash checks clean → row 2e verify=PASS (user, date), close the T2 bug, then step 3 with
+- T1 + T2 pass, crash checks clean → row 2f verify=PASS (user, date), close the T2 bug, then step 3 with
   the user.
-- First row is a thumbnail row but not page 11's → the landing fires and `scrollToPositionWithOffset`
-  lands on the wrong row: branch B (`ChapterLayoutManager` row geometry), needs the user's OK.
-- First row is still the Ch. 2 header → the landing still never fires; record it and stop, do not add a
-  timer, a retry, or a second anchor flag.
+- Top row is a thumbnail row but not page 11's, and nothing above it belongs to an earlier chapter → the
+  landing fires and `scrollToPositionWithOffset` lands on the wrong row: branch B (`ChapterLayoutManager`
+  row geometry), needs the user's OK.
+- Earlier pages of Ch. 2 or another chapter still sit above the marker → 2f did not hold; record it and
+  stop, do not add a timer, a retry, or a second anchor flag.
 
 ## Audit result — 2026-11-04 (Black Clover, 854 chapters, last read Ch. 2 page 11, HEAD `8f0b266f56`, code `9e4cce9784`)
 
