@@ -33,7 +33,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
 | 2g | one gate rule for all three dataset mutations, target exempt | `fae961c88c` | ok | FAIL (user, 2026-11-05) — B1 unchanged, B2 and B3 pass. So the push-down is not only an insert problem |
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS. Premise of the last three rounds was misread: page 11 never reaches the top row |
-| 2i | keep the viewport through a dataset swap (`updateItems`) | this commit | ok | PENDING — E1 in "Next action" |
+| 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS. The capture is itself the flaw, see below |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -68,9 +68,9 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **T1 — the last-read row is not on the top row (open, still open after 2h).** Screenshot evidence points
-  at the dataset swap in `updateItems` throwing the viewport back to item 0 after the landing ran; 2i keeps
-  it. Verdict for 2i is E1 in "Next action".
+- **T1 — the last-read row is not on the top row (open, still open after 2i).** Lead: a dataset rebuild
+  that runs before a pending landing is laid out puts the viewport back at item 0, and 2i's capture reads
+  that stale child. Needs F1 (does waiting kill it?) and F2 (which rule the user wants) before more code.
 - **scrolling the panel feels heavy (open).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame.
@@ -108,15 +108,32 @@ re-applies it with `scrollToPositionWithOffset` in the same pass. Two local valu
 returns — not the `ViewportAnchor` state that step 2b deleted, and not a timer. A rebuild that moves the
 viewport is a bug whatever the landing was going to do.
 
-Test on the same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line each:
+**Result 2026-11-05 (user): E1 FAIL, E2 PASS.** And 2i's own flaw is visible in it: `updateItems` captures
+`getChildAt(0)` while the landing's `scrollToPositionWithOffset` is **still pending, not laid out yet** — so
+what it captures is the *pre-jump* child, which is item 0. The restore then pins the viewport to the top of
+the list on purpose. E2 passes because a filter rebuild happens after a real layout exists, so the child it
+captures is the one the user is actually looking at.
 
-- **E1** — open the panel, let it settle ~5 s, do nothing. Expect: page 11's row is the top row and **stays
-  there**; the panel must not end up showing Ch. 0 at the top.
-- **E2** — open, then filter, then clear the filter. Expect: the viewport keeps the row you were looking at
-  instead of jumping to the start of the list.
+The mechanism that fits every verdict this session, including the screenshot: **the open lands, and a
+rebuild that runs before that landing has been laid out moves the viewport back to the start of the
+dataset.** 2d-2i each removed a real defect and none of them addressed this, because all five were written
+against a premise (page 11 lands then drifts) that the screenshot disproved.
 
-If E1 still ends at Ch. 0, the swap is not what loses the viewport and the next thing to read is
-`prewarmPreviewPanel` / `setChapters` ordering in `MangaDetailsController`, not the adapter.
+Two things are needed before another line of code:
+
+- **F1, the falsifiable test (user, one line):** enter the manga, wait ~30 s so the chapter and history
+  streams have all settled, *then* open the panel. If it lands on page 11 and stays, the rebuild races the
+  open and the rule is settled. If it still shows Ch. 0 on top, the rebuild is not the culprit and this
+  whole line of reasoning gets dropped, not extended.
+- **F2, the rule (user's call, not the agent's):** when may a rebuild move the panel? Two coherent answers
+  exist and they behave differently: (a) in grid mode a rebuild always re-applies the target, so the panel
+  is *defined* by the last-read page and can never sit at Ch. 0 — but a chapter-list update while the panel
+  is open pulls the user back to page 11; (b) a rebuild never moves the viewport, so browsing stays put —
+  and the open path has to land *after* the panel is visible and laid out, which is a controller change.
+  Preserving a scroll that has nothing to anchor on, which is what 2i does, is neither.
+
+If the answer is (b), 2g/2h/2i are candidates for revert back to `14079bfb32` (the one build this bug was
+ever observed fixed on) and the work restarts from the open path in `MangaDetailsController`.
 
 Two code facts found along the way, both still true and still worth keeping (they are in `fae961c88c` and
 `c18f85ed5b`):
