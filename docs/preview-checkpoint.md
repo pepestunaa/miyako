@@ -33,7 +33,8 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
 | 2g | one gate rule for all three dataset mutations, target exempt | `fae961c88c` | ok | FAIL (user, 2026-11-05) — B1 unchanged, B2 and B3 pass. So the push-down is not only an insert problem |
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS. Premise of the last three rounds was misread: page 11 never reaches the top row |
-| 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS. The capture is itself the flaw, see below |
+| 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS. Reverted in 2j: it captured the *pre-jump* child |
+| 2j | a grid rebuild always re-applies the target landing (rule F2 = a) | this commit | ok | PENDING — G1 in "Next action" |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -56,6 +57,9 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
   branch A.
 - **A single PASS is not a PASS.** 2f was recorded PASS on one trial and is FAIL on repeat tries; the
   verdict column says so. Ask for the failing shape, not for another clean run.
+- **Rule F2 (user, 2026-11-05): in grid mode a rebuild always lands on the last-read page.** The panel's
+  position is defined by the data, not by the children a dataset swap scraps. Do not reintroduce a
+  preserve-the-viewport rebuild without asking.
 
 ## Why the old code was broken (so nobody re-derives it)
 
@@ -119,21 +123,20 @@ rebuild that runs before that landing has been laid out moves the viewport back 
 dataset.** 2d-2i each removed a real defect and none of them addressed this, because all five were written
 against a premise (page 11 lands then drifts) that the screenshot disproved.
 
-Two things are needed before another line of code:
+**F2 answered 2026-11-05 (user): (a) — in grid mode a rebuild always re-applies the target landing.** So
+`rebuildPageGrid` now ends with an unconditional `scrollToCurrentPage()`, and 2i's capture/restore is
+reverted: preserving a scroll that has nothing left to anchor on is not a rule, it is the bug. The accepted
+cost is the one written in option (a) — a chapter-list update while the panel is open pulls the view back to
+the last-read page. If that reads as wrong in practice, the alternative stays (b): land *after* the panel is
+visible and laid out, which is a change in `MangaDetailsController`, not another adapter patch.
 
-- **F1, the falsifiable test (user, one line):** enter the manga, wait ~30 s so the chapter and history
-  streams have all settled, *then* open the panel. If it lands on page 11 and stays, the rebuild races the
-  open and the rule is settled. If it still shows Ch. 0 on top, the rebuild is not the culprit and this
-  whole line of reasoning gets dropped, not extended.
-- **F2, the rule (user's call, not the agent's):** when may a rebuild move the panel? Two coherent answers
-  exist and they behave differently: (a) in grid mode a rebuild always re-applies the target, so the panel
-  is *defined* by the last-read page and can never sit at Ch. 0 — but a chapter-list update while the panel
-  is open pulls the user back to page 11; (b) a rebuild never moves the viewport, so browsing stays put —
-  and the open path has to land *after* the panel is visible and laid out, which is a controller change.
-  Preserving a scroll that has nothing to anchor on, which is what 2i does, is neither.
-
-If the answer is (b), 2g/2h/2i are candidates for revert back to `14079bfb32` (the one build this bug was
-ever observed fixed on) and the work restarts from the open path in `MangaDetailsController`.
+- **G1** — the original E1: open the panel, let it settle ~5 s, touch nothing. Expect: page 11's row is the
+  top row and it stays there. This is the verdict for the bug.
+- **G2** — the price of the rule: with the panel open, scroll to Ch. 30, then let the chapter list update (or
+  leave and re-enter the detail page). Expect: the panel jumps back to page 11. Say whether that is
+  acceptable or annoying — it is the trade the user just bought, not a regression.
+- **F1** is still worth 30 seconds: enter the manga, wait, then open. If G1 passes and F1 fails, the landing
+  races something the rebuild rule does not cover and the next read is `prewarmPreviewPanel`'s ordering.
 
 Two code facts found along the way, both still true and still worth keeping (they are in `fae961c88c` and
 `c18f85ed5b`):
