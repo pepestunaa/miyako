@@ -139,6 +139,15 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 - Agent baru mulai dari: file status topik → `git log --oneline -5` → bagian "Next action" di file itu. Jangan mengulang diagnosis yang sudah tercatat di sana, dan jangan membuka file sumber besar sebagai pemanasan — pertanyaan struktur dijawab `codebase-memory` atau subagent yang mengembalikan path + nama simbol.
 - **Prompt oper maksimal ~10 baris**: tunjuk file status plus satu langkah berikutnya. Detail uji (daftar periksa, perintah, pohon keputusan) hidup di file status. Yang membunuh agent konteks penuh biasanya bukan kurang instruksi, melainkan instruksi yang sama disalin di prompt + plan + file status.
 - **Satu langkah = satu thread baru.** Thread yang sudah melempar "context too long" tidak bisa diselamatkan dengan pesan yang lebih pendek; mulai thread bersih dan arahkan ke file status.
+- **Satu percobaan perbaikan per penyebab yang sudah terbukti.** Perbaikan yang ditulis tanpa penyebab yang
+  terbukti adalah tebakan, dan tebakan beruntun di file yang sama adalah pola yang membuat topik ini mati
+  tujuh ronde (lihat `docs/preview-checkpoint.md`).
+- **Aturan berhenti 2 ronde.** Gejala yang sama masih gagal setelah 2 perbaikan di device → berhenti: tulis
+  apa yang sudah tersingkir dan apa pertanyaan kode yang tersisa di file status, commit, serahkan ke user.
+- **Anggota tim yang menyentuh layar adalah user.** Daftar uji device tidak boleh bertambah saat satu bug
+  belum terjawab; tiap ronde baru harus didahului satu pertanyaan kode yang dijawab dari sumber, bukan dari HP.
+- **Agent menilai sendiri kapan harus berhenti.** Kalau sisa sesi cuma akan menghasilkan varian perbaikan
+  keempat dari ide yang sama, checkpoint + berhenti jauh lebih berguna daripada commit lagi.
 - File yang otomatis termuat tiap sesi (`AGENTS.md`, file status topik) adalah **biaya tetap** untuk agent berikutnya, bukan arsip. Jaga file status ±100 baris; narasi audit lama dipadatkan dan isi lengkapnya ditunjuk lewat `git show <commit>:<file>`.
 - Baris `evidence:` ditegakkan oleh `.githooks/commit-msg` untuk commit yang menyentuh `app/src/main/**`. Aktifkan per clone: `git config core.hooksPath .githooks`, atau salin `.githooks/commit-msg` ke `.git/hooks/`.
 
