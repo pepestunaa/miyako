@@ -15,7 +15,7 @@ This fork adds:
 - A disk image cache and reduced reader preloading under memory pressure
 - An AVIF decoder backed by libavif
 - Removal of unused dependencies (Firebase, Conscrypt, QuickJS) and the onboarding flow
-- A Usagi-inspired manga details page: page grid, swipe-left preview, last-read anchoring,
+- An improved manga details page: page grid, swipe-left preview, last-read anchoring,
   back-to-top button
 
 ## Build
@@ -56,9 +56,8 @@ Miyako is a personal fork; fixes that affect upstream belong in
 ## Credits and license
 
 Built on [Yōkai](https://github.com/null2264/yokai), [Mihon](https://github.com/mihonapp/mihon),
-[Tachiyomi](https://github.com/tachiyomiorg/tachiyomi), and TachiyomiJ2K. The manga details UX is
-inspired by [Usagi](https://github.com/UsagiApp/Usagi). The app hosts no content and is not
-affiliated with any content provider.
+[Tachiyomi](https://github.com/tachiyomiorg/tachiyomi), and TachiyomiJ2K. The app hosts no content
+and is not affiliated with any content provider.
 
 - Copyright © 2015 Javier Tomás
 - Copyright © 2024 null2264
