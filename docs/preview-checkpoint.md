@@ -23,10 +23,10 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | step | scope | commit | build | verify |
 |------|-------|--------|-------|--------|
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
-| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — its own target (all chapters present, filter/sort/back-to-top) is still untested; the first audit only found the tracked bug below |
-| 2 | remove the glide/anchor machinery | `git log --grep 'smooth scroll'` | ok | PENDING — combined audit with step 1 after 2c |
-| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `git log --grep 'viewport anchor'` | ok | PENDING — combined audit after 2c. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
-| 2c | clean up callers in `MangaDetailsController` | `git log --grep 'scroll-cancel'` | ok | PENDING — combined audit (steps 1, 2, 2b, 2c) next. `onPreviewScrollIdle` was already gone in step 0 |
+| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — device audit 2026-11-04 (see "Audit result"): its own target (all chapters present T3, filter/sort T4) passed, but T2 and the T4 back-to-top smoothness did not |
+| 2 | remove the glide/anchor machinery | `git log --grep 'smooth scroll'` | ok | PENDING — same audit; T2 FAIL is in this area |
+| 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | `git log --grep 'viewport anchor'` | ok | PENDING — same audit. `anchorChapterId` kept: `scrollToCurrentPage` lands on a finished chapter with it, not the marker |
+| 2c | clean up callers in `MangaDetailsController` | `git log --grep 'scroll-cancel'` | ok | PENDING — same audit. `onPreviewScrollIdle` was already gone in step 0 |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -52,54 +52,43 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **pages stay detached after open until one drag.** First audit (Black Clover, 854 chapters, build
-  `bd3eaa47a5`, reproducible across two opens, last read Ch. 2 page 11 of 26): the panel opened on the
-  Ch. 2 header, which said "Pages 26", but no thumbnails and no marker appeared; one 60 px drag attached
-  them. Cause from the code: `loadSectionPages` hands `attachItems = !isScrolling` to `onPagesLoaded`,
-  and the glide was the only thing leaving the recycler non-IDLE while the panel opens; the retry path
-  needs a scroll-state change. Pre-existing and masked by the glide, not a step 1 regression. Settled by
-  A2 below. Full first-audit report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
+- **pages stay detached after open until one drag** — first audit (build `bd3eaa47a5`), cause from the
+  code: `loadSectionPages` hands `attachItems = !isScrolling` to `onPagesLoaded`; the glide was the only
+  thing keeping the recycler non-IDLE on open. Full report: `git show bbfb192a5e:docs/preview-checkpoint.md`.
+  **Not reproduced on 2026-11-04**: thumbnails now attach by themselves (T2), so the symptom changed
+  into the next bug. Do not close it formally until T2 passes.
+- **target drifts off screen after the open (T2, seen 2026-11-04).** Pages attach on their own, but
+  the chapters above the target also load their pages; the target's thumbnails end up overlapped or
+  stacked under the chapters above, and the blue marker keeps moving down until it leaves the screen.
+  User observation only; cause not investigated.
+- **back to top feels heavy and not smooth (T4, 2026-11-04).** Functionally correct, scroll is janky.
+  Not measured; may be the same dataset-change cost as the bug above or the step 4 loader chain.
 
-## Next action — one combined device audit (steps 1, 2, 2b, 2c)
+## Audit result — 2026-11-04 (Black Clover, 854 chapters, last read Ch. 2 page 11, HEAD `8f0b266f56`, code `9e4cce9784`)
 
-Black Clover, 854 chapters, last read = Ch. 2, page 11 of 26. Division of labour: "Pembagian Kerja:
-User dan Agent" in `agents.md`.
+| item | result |
+|------|--------|
+| T1 lands on Ch. 2 | PASS (user, 2026-11-04) |
+| T2 auto attach + marker on page 11 | FAIL (user, 2026-11-04) — attach works, but chapters above load and overlap the target; marker drifts down off screen |
+| T3 all 854 chapters, no gap | PASS (user, 2026-11-04) |
+| T4 filter, sort, top, end | PASS functionally (user, 2026-11-04); back to top scroll heavy / not smooth |
+| T5 swipe row, back | PASS (user, 2026-11-04) |
+| T6 open/close fast+slow, diagonal, vertical | PASS (user, 2026-11-04) — no jump, no flicker |
+| `logcat -d \| grep -c FATAL` | 0 (agent, 2026-11-04) |
+| `logcat -d -b crash` | empty (agent, 2026-11-04) |
 
-Agent does, in this order, and nothing else on the phone:
+Neither decision-tree branch fits: it is not "only T2 fails" in the attach sense, so the re-attach fix
+was not applied. Rows for steps 1, 2, 2b, 2c stay PENDING and the `todo.md` boxes stay unchecked.
 
-1. Confirm HEAD is still `9e4cce9784` and the built APK is current; rebuild only if the tree moved
-   (commands in the "Build dan Verifikasi di Device" section of `agents.md`).
-2. Install it and hand the phone to the user: `adb -s d89608bf install -r <apk>`, `logcat -c`.
-3. Post the T1-T6 list below to the user verbatim, then stop and wait.
-4. When the report arrives, run the text checks: `logcat -d | grep -c FATAL` and `logcat -d -b crash`.
-5. Record each result here with provenance (`PASS (user, <date>)`), commit the docs, then follow the
-   decision tree. Do not read the source files while waiting; that is what overflowed the last threads.
+## Next action
 
-The user does, on the phone, one line back per item (`T2 FAIL — header Ch. 2, masih tidak ada
-thumbnail sampai digeser`):
+Stop and ask the user which to take first; do not start on a guess:
 
-- T1 open the preview → it lands on the last-read chapter (Ch. 2), not on the first chapters
-- T2 wait ~5 s without touching the screen → thumbnails attach on their own and the blue marker sits
-  on Ch. 2 page 11 — this is the tracked bug above, so this item is the reason the audit exists
-- T3 scroll to the very top → all 854 chapters are there, no gap, no window
-- T4 filter, sort, back to top, scroll to end → all behave
-- T5 swipe a chapter row (read / bookmark), then press back → nothing broken outside the preview
-- T6 open and close the panel fast and slowly, diagonal drag, vertical drag → no jump, no flicker
-
-Decision tree:
-
-- All T1-T6 pass and the crash checks are clean → set verify=PASS (user, <date>) for steps 1, 2, 2b and
-  2c here, close the tracked bug, check the matching boxes in `todo.md`, commit the docs, then stop and
-  ask the user before step 4.
-- Only T2 fails → the glide was not the cause. `loadSectionPages` hands `attachItems = !isScrolling` to
-  `onPagesLoaded`, and the else-branch leaves `pagesAttached = false` with no retry because
-  `loadVisiblePageSections` only runs on a scroll-state change. Make the open path re-attach cached
-  pages once — no timer, no poll loop, no extra `postDelayed` chain. Own commit, then re-run T1 and T2.
-- T1, T3-T6 fail → step 1 regression: record the exact symptom here, leave the boxes unchecked, stop, report.
-- The crash checks find anything → stop immediately and report the stack trace from the crash buffer.
+1. T2 drift — find what changes the layout above the target after pages load (query the graph for the
+   section holder / `onPagesLoaded` path; do not read whole files). Fix, own commit, re-run T1 and T2 only.
+2. T4 back-to-top smoothness — measure first, then decide whether it belongs to step 4.
 
 ## What is measured, not asserted
 
-`verify: PASS` on step 0 and 1 refers to the checks named in the table only. Nothing here yet claims a
-RAM or smoothness win; the memory claim in particular stays unproven until step 1 and step 5 are
-compared on device.
+`verify: PASS` on step 0 refers to the checks named in the table only. Nothing here claims a RAM or
+smoothness win; the memory claim stays unproven until step 1 and step 5 are compared on device.
