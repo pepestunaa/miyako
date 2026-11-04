@@ -31,6 +31,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | 2d | gate the page attach on the panel's own top row (`bc58e53595` + `4118c1ca7d`) | `4118c1ca7d` | ok | PASS in part (user, 2026-11-05) — removed a real blocker, the bug it targeted stayed |
 | 2e | land from the data path: pending survives a miss, rebuild applies it | `1aef7fef87` | ok | PASS in part (user, 2026-11-05) — the top row became a thumbnail row instead of the header |
 | 2f | check the attach gate where the dataset is mutated (`onPagesLoaded`) | `14079bfb32` | ok | FAIL (user, 2026-11-05) — correct on the first trial, wrong on repeat tries: the landing is intermittent |
+| 2g | one gate rule for all three dataset mutations, target exempt | this commit | ok | PENDING — B1 in "Next action" is the repeat-open test |
 | 3 | keep-list contract, verify nothing above was lost | — | — | — |
 | 4 | disable-then-measure the priority loader chain | — | — | — |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
@@ -65,10 +66,11 @@ Steps 1 and 2 removed both mechanisms.
 
 ## Tracked bugs
 
-- **T1 — the last-read row is on top only sometimes (open, intermittent).** Confirmed good on one trial
-  on `14079bfb32`, then wrong on repeated tries. So the marker row does get built and does get landed
-  on, but not every open. The cause is something that differs between opens — see the three candidates
-  and the one observation in "Next action".
+- **T1 — the last-read row is on top only sometimes (open, two shapes, awaiting 2g).** The user reported
+  both a bare Ch. 2 header that only fills in after a drag, and page 11 settling correctly then dropping,
+  randomly and including on the first open. Two mutation sites explain them: `rebuildPageGrid()` laid
+  cached rows back in without consulting the gate, and the gate held the target's own rows back. Both are
+  now one rule in `pageAttachIsHeldBack`, with the pending-target exception — see "Next action".
 - **scrolling the panel feels heavy (open).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — with 854+ sections that is O(children x items) per frame.
@@ -80,34 +82,38 @@ Steps 1 and 2 removed both mechanisms.
   insert above the anchor). Write-ups: `git show 1aef7fef87:docs/preview-checkpoint.md` and
   `git show 14079bfb32:docs/preview-checkpoint.md`.
 
-## Next action — T1 is intermittent: one observation decides it
+## Next action — T1: test the rule on repeated opens
 
-Do not change code before the answer arrives. `14079bfb32` proves the landing works at least once per
-session, which rules out every explanation that is true on all opens (the flag logic, the ascending sort,
-the `paddingTop` line). Three candidates survive, and they look different on screen:
+The user's answer came back with **both** shapes (page 11 on top then dropping, and the Ch. 2 header on
+top with the thumbnails only appearing after a drag), randomly, and including on the first open. That
+combination names the cause rather than a race: the gate lived at one of the two places that mutate the
+dataset, and it treated the target chapter like any other.
 
-1. **the gate now holds the target itself back.** With the panel parked on the Ch. 2 header, a rebuild or
-   a second park can leave that header ending above `paddingTop`, so `isAboveFirstVisibleRow(section)`
-   calls the target "above the viewport" and its own rows never insert. Screen: the Ch. 2 **header text**
-   on the top row and an empty thumbnail area until a drag.
-2. **an above-viewport insert still gets through** (a fetch finishing between the park and the landing, or
-   `attachCachedPages` running from a path that does not re-check the gate). Screen: page 11 starts on top
-   and then moves down.
-3. **the landing runs late, after the panel has settled somewhere else.** Screen: the open starts at the
-   top of the list or on Ch. 2's first pages, then snaps to page 11.
+- `rebuildPageGrid()` laid **every** cached chapter's rows back into the dataset, gate or no gate. It runs
+  from `setChapters`, `performFilter` and `setPageGridMode`, so a rebuild after the landing put the
+  chapters above the target back in and the marker dropped. That is the "page 11 then a shift down".
+- The gate held the **target's own** rows back whenever its header measured above the content line, so
+  nothing could attach and the panel sat on a bare header until a drag. That is the "header on top".
 
-One item back from the device, same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), no
-screenshot needed — one line each:
+One rule now covers both, in one private helper `pageAttachIsHeldBack(section)`: rows never go in above
+the panel's top row, **except** for the chapter the landing still owes the viewport (`pendingScrollToCurrent`
+plus `currentPage` / `anchorChapterId` / `priorityChapterId`). All three mutation sites use it —
+`onPageSectionBound`, `onPagesLoaded` and `rebuildPageGrid` — and the rebuild keeps the rows of any section
+already attached, so it can neither add nor remove content above the anchor. No new state, no timer, no
+retry, no second anchor flag.
 
-- **A1** — open and close the preview until it fails, then say which of these you saw: the Ch. 2 header,
-  an earlier page row, page 11 then a shift down, or a snap into place a moment later.
-- **A2** — does it ever fail on the *first* open right after entering the manga, or only after several
-  open/close cycles?
+Test on the same manga (Black Clover, 854 chapters, last read Ch. 2 page 11), one line each, no
+screenshot:
 
-Then, and only then: A1 = header → candidate 1, fix the gate so the target section is never treated as
-above its own top row. A1 = shift → candidate 2, close the remaining insert path. A1 = snap → candidate
-3, that is a dataset-order question, not a new mechanism. A1 with "first open only" or "repeat only"
-tells the same story from the side. Nothing here needs a timer, a retry, or a second anchor flag.
+- **B1** — open the preview, let it settle, close it, repeat ~10 times. Expect: page 11's row on top every
+  single time; no open that shows a bare Ch. 2 header, no content that drops after settling.
+- **B2** — after a settle, scroll up to Ch. 0/Ch. 1 and back down. Expect: their thumbnails load as they
+  come into view and page 11 is where you left it when you return.
+- **B3** — filter, then reverse the sort, then clear the filter. Expect: the panel still lands on page 11
+  (or on the target chapter with the reversed order), and no rows above it appear before a drag.
+
+B1 is the verdict for this bug; B2 and B3 are the regression checks for the rule. If B1 fails again, name
+which of the two shapes it was — they are different helpers now, so the answer says which one is wrong.
 
 ## Step 6, parked behind T1: measure the panel scroll
 

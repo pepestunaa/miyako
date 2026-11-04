@@ -102,8 +102,15 @@ class MangaDetailsAdapter(
             section.pageCount = chapterPages[chapterId]?.size ?: 0
             if (!chapterPages.containsKey(chapterId)) section.pagesAttached = false
             gridItems.add(section)
-            chapterPages[chapterId]?.forEach { page ->
-                gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
+            val pages = chapterPages[chapterId]
+            // A rebuild laying cached rows in above the parked target moves the viewport just as surely
+            // as an insert does, so the gate applies here too: header-only until they scroll back in.
+            if (pages != null && (section.pagesAttached || !pageAttachIsHeldBack(section))) {
+                pages.forEach { page ->
+                    gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
+                }
+            } else if (pages != null) {
+                section.pagesAttached = false
             }
         }
         updateItems(gridItems)
@@ -144,7 +151,7 @@ class MangaDetailsAdapter(
         if (isScrolling) return
         // Rows inserted above the first visible row are not compensated by RecyclerView, so they
         // can only push the content the user is looking at.
-        if (isAboveFirstVisibleRow(section)) return
+        if (pageAttachIsHeldBack(section)) return
         attachCachedPages(section)
         if (!pageSectionShouldLoad(section)) return
         // Hold back other chapters while the last-read one is still fetching: the panel anchors
@@ -172,6 +179,22 @@ class MangaDetailsAdapter(
             if (topRow == RecyclerView.NO_POSITION || childPosition < topRow) topRow = childPosition
         }
         return topRow != RecyclerView.NO_POSITION && position < topRow
+    }
+
+    /**
+     * The single rule for every place that puts page rows into the dataset: rows going in above the
+     * panel's top row are not compensated, so they shove whatever the user is looking at down. The
+     * exception is the chapter the landing still owes the viewport: holding its rows back is what
+     * leaves the panel parked on an empty header.
+     */
+    private fun pageAttachIsHeldBack(section: ChapterPagesSectionItem): Boolean {
+        val chapterId = section.chapter.id ?: return false
+        if (pendingScrollToCurrent &&
+            (chapterId == currentPage?.first || chapterId == anchorChapterId || chapterId == priorityChapterId)
+        ) {
+            return false
+        }
+        return isAboveFirstVisibleRow(section)
     }
 
     fun retryPageSection(section: ChapterPagesSectionItem) {
@@ -314,7 +337,7 @@ class MangaDetailsAdapter(
         when {
             sectionPosition == -1 || !pageGridMode -> Unit
             pages.isEmpty() -> section.pagesAttached = true
-            attachItems && !isAboveFirstVisibleRow(section) -> {
+            attachItems && !pageAttachIsHeldBack(section) -> {
                 insertPageItems(section, sectionPosition, pages)
                 section.pagesAttached = true
                 maybeScrollToCurrentPage(chapterId)
