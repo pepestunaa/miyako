@@ -15,6 +15,8 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 5. Structural questions (`who calls anchorToCurrentPage`, what still depends on a section holder) go
    through the `codebase-memory` skill, or a subagent that returns paths plus symbol names — never a
    manual read of whole files.
+6. This file is over its own ±100-line budget, and every future session pays that. Whoever next edits it
+   also folds the round-by-round narrative into the verdict table; new rounds are not appended.
 
 ## Status
 
@@ -122,6 +124,12 @@ open path in `MangaDetailsController`, which was never read end to end:
   listener calls `loadVisiblePageSections()` on DRAGGING (every frame) and on IDLE.
 - `setChapters` is called from the chapter/history streams (three sites) and each call rebuilds and, since
   2j, re-lands.
+
+Suspect zero, above the three above: `prewarmPreviewPanel` itself. Its own comment says it exists so the
+first swipe "only translates a grid that is already laid out and **anchored**" — that is vocabulary from the
+machine step 2 deleted. It lands the panel off-screen, then hides it again after `PANEL_WARM_SETTLE_MS`,
+which is the timer pattern the guardrails forbid. If the ordering question below shows the landing is fine
+and the warm pass is what puts the viewport back to 0, the fix is deleting the warm path, not adding to it.
 
 The question to answer first, by reading those functions and the `previewOpen` / `previewWarmed` flags:
 **which of prewarm / setChapters / beginDrag runs last, and is the scroll it set still pending when the
