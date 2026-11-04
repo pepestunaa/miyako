@@ -618,7 +618,7 @@ class MangaDetailsController :
         recycler.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) adapter.cancelPendingScroll()
+
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) adapter.loadVisiblePageSections()
                 }
 
@@ -969,7 +969,7 @@ class MangaDetailsController :
     private fun onPreviewClosed() {
         previewOpen = false
 
-        previewAdapter?.cancelPendingScroll()
+
         binding.pagesPreviewRecycler.visibility = View.GONE
         hidePreviewScrims()
         binding.swipeRefresh.isEnabled = true

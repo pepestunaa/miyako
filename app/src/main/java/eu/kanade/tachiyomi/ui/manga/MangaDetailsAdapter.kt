@@ -207,9 +207,6 @@ class MangaDetailsAdapter(
         onPageSectionBound(section)
     }
 
-    fun cancelPendingScroll() {
-        pendingScrollToCurrent = false
-    }
 
     private fun anchorToCurrentPage(position: Int) {
         val recycler = recyclerView ?: return
