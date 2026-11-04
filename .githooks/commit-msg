@@ -1,0 +1,38 @@
+#!/bin/sh
+# Require a checkpoint line on commits that touch manga UI / preview code, so a fresh agent can
+# resume from git alone when a session is cut short.
+#
+# Activate in this clone:  cp .githooks/commit-msg .git/hooks/commit-msg
+# Activate for every clone: git config core.hooksPath .githooks   (run this yourself)
+# Self-test without staging: STEP_CHECKPOINT_SELFTEST=1 sh .githooks/commit-msg msg.txt
+
+msg_file="$1"
+[ -n "$msg_file" ] || exit 0
+
+first_line=$(head -n 1 "$msg_file")
+case "$first_line" in
+	Merge* | Revert* | fixup!* | squash!*) exit 0 ;;
+esac
+
+if [ "$STEP_CHECKPOINT_SELFTEST" = "1" ]; then
+	staged="app/src/main/java/eu/kanade/tachiyomi/ui/manga/Scratch.kt"
+else
+	staged=$(git diff --cached --name-only)
+fi
+
+printf '%s\n' "$staged" |
+	grep -q '^app/src/main/java/eu/kanade/tachiyomi/ui/manga/\|^app/src/main/res/layout/manga_details_controller.xml' ||
+	exit 0
+
+grep -Eq '^step: [0-9]+/[0-9]+ [|] build: .+ [|] device: (PASS|PENDING|FAIL|N/A)' "$msg_file" && exit 0
+
+cat >&2 <<'EOF'
+Commit rejected: this change touches manga UI / preview code.
+
+Add one checkpoint line to the commit body:
+	step: 2/6 | build: ok | device: PENDING
+
+device: PASS is only for a finished on-device audit; use PENDING when the build passed but the
+behaviour has not been checked on the phone. See docs/preview-checkpoint.md
+EOF
+exit 1
