@@ -19,7 +19,7 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 | step | scope | commit | build | verify |
 |------|-------|--------|-------|--------|
 | 0 | drop WIP diagnostics (debug logs, `onPreviewScrollIdle`) | folded into `545aad8583` baseline | ok | PASS (launch clean, FATAL 0, crash buffer empty) |
-| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | FAIL — see "Step 1 device audit" below; the grid lands on the right chapter but its pages do not attach |
+| 1 | remove the batch window (`batchedItems` and friends) | `248f70c0ca` | ok | PENDING — its own target (all chapters present, filter/sort/back-to-top) is still untested; the first audit only found the tracked bug below |
 | 2 | remove the glide/anchor machinery | — | — | — |
 | 2b | remove reopen-position leftovers (`ViewportAnchor`, `savedPreviewAnchor`) | — | — | — |
 | 2c | clean up callers in `MangaDetailsController` | — | — | — |
@@ -50,6 +50,11 @@ reading", traces to `f1abb58fac`, which made `rebuildPageGrid()` iterate `batche
 `scrollToCurrentPage()` -> `ensureChapterInBatch()`, which returns early while history is still
 loading. Step 1 removes that structure, so the symptom should be gone once verified on device.
 
+## Tracked bugs
+
+- **pages stay detached after open until a drag** - suspected glide-induced `attachItems = false`, to be
+  re-checked after step 2. Found in the first step 1 audit; not a step 1 regression.
+
 ## Step 1 device audit (OPPO CPH1931, debug build of `bd3eaa47a5`)
 
 Manga: Black Clover, 854 chapters. Recents shows last read = Ch. 2, page 11 of 26.
@@ -65,17 +70,18 @@ Observed, reproducible on two consecutive opens (waited 3 s and 6 s, state did n
   after the open.
 - Logcat: FATAL 0, crash buffer empty. Back navigation to Library/Recents worked.
 
-Likely cause (inference, not yet proven): `onPagesLoaded(attachItems = !isScrolling)` runs while
-`scrollToCurrentPage()` is still settling and sets `pagesAttached = false`. Nothing re-attaches because
-the only retry is `onPageSectionBound` (needs a bind) or `loadVisiblePageSections()` on a scroll IDLE
-transition, and a programmatic `scrollToPosition` produces none. Not checked whether this exists at
-`545aad8583` as well; the glide used to cause scroll-state changes that may have masked it.
+Cause, from reading the code: `loadSectionPages` passes `attachItems = !isScrolling` to `onPagesLoaded`.
+While the panel opens, the only thing that leaves the recycler non-IDLE is the glide (`glideTo` /
+`animateToPosition`). If the page list arrives inside that window, `pagesAttached = false` and the
+items are never inserted. The recovery path (`loadVisiblePageSections` -> `attachCachedPages`) needs a
+scroll-state change, `settleAnchorToTop` early-returns while non-IDLE, and the corrections that use
+`scrollToPositionWithOffset` emit no state change. So nothing retries until the user drags. Pre-existing
+bug that the glide used to mask, which step 2 should remove. Still to be confirmed on device after 2c.
 
 Not checked in this pass: that every chapter is reachable by scrolling to the top, filter/sort/back to
-top, chapter-row swipe (read/bookmark). Do those after the attach problem is understood.
+top, chapter-row swipe (read/bookmark). These go into the combined audit after step 2c.
 
-Next: find why pages stay detached after open (`onPagesLoaded`, `attachCachedPages`,
-`scrollToCurrentPage`) and fix it before step 2, or confirm step 2 removes the cause.
+Next: steps 2, 2b, 2c, then one combined device audit covering steps 1 and 2.
 
 ## What is measured, not asserted
 
