@@ -106,7 +106,7 @@ class MangaDetailsAdapter(
             // A rebuild laying cached rows in above the parked target moves the viewport just as surely
             // as an insert does, so the gate applies here too: header-only until they scroll back in.
             if (pages != null && (section.pagesAttached || !pageAttachIsHeldBack(section))) {
-                pages.forEach { page ->
+                rowsFor(chapter, pages).forEach { page ->
                     gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
                 }
             } else if (pages != null) {
@@ -377,13 +377,30 @@ class MangaDetailsAdapter(
         }
     }
 
+    /**
+     * The rows a chapter contributes to the grid. The target chapter enters from the last-read page
+     * onward: the pages above it are what used to stack on top of the landing and push it down. Their
+     * absence while browsing upward belongs to step 5's compensating insert, not to this rule.
+     */
+    private fun rowsFor(chapter: Chapter, pages: List<Page>): List<Page> {
+        val target = currentPage ?: return pages
+        if (chapter.id != target.first) return pages
+        return pages.filter { it.index >= target.second }
+    }
+
     private fun insertPageItems(
         section: ChapterPagesSectionItem,
         sectionPosition: Int,
         pages: List<Page>,
     ) {
         val chapter = section.chapter
-        val pageItems = pages.map {
+        // The landing owes the viewport the last-read row, and for the target chapter that row is now
+        // the first one inserted. If an earlier pass cleared the flag while the row did not exist yet,
+        // re-arm it here: same landing, not a second rule.
+        if (chapter.id != null && chapter.id == currentPage?.first && currentPagePosition() == null) {
+            pendingScrollToCurrent = true
+        }
+        val pageItems = rowsFor(chapter, pages).map {
             ChapterPageItem(chapter, it, isCurrentPage(chapter, it)) as IFlexible<*>
         }
         val recycler = recyclerView

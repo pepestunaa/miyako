@@ -37,24 +37,25 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS |
 | 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS; the capture itself was wrong, reverted by 2j |
 | 2j | a grid rebuild always re-applies the target landing (rule F2, chosen by the user) | `5b0e9e0401` | ok | FAIL (user, 2026-11-05) — G1 FAIL, G2 not run. Topic stopped here |
-| 3 | keep-list contract, verify nothing above was lost | — | — | — |
+| 3 | target chapter enters at the last-read page, one landing after the insert | this commit | ok | PENDING — one question to the user, below |
 | 4 | disable-then-measure the priority loader chain | — | — | sequenced after T1, see Decisions |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
 | 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — never started, see "Step 6" |
 
 ## Next action — implement the landing on the dataset side
 
-One session, one commit, and no device test until it builds and installs.
+**Done in row 3.** `rowsFor()` makes the target chapter enter the dataset from `chapter.last_page_read`
+onward in all three insert paths (`onPagesLoaded`, `attachCachedPages`, `rebuildPageGrid`), so nothing
+sits above the row the landing owes; `insertPageItems` re-arms `pendingScrollToCurrent` when the last-read
+row is not in the dataset yet, and `maybeScrollToCurrentPage` lands on it once with
+`scrollToPositionWithOffset(row, 0)`. The `isAboveFirstVisibleRow` gate, rule F2 and the open path are
+unchanged. Pages above the target stay out of the dataset until step 5's compensating insert (accepted).
 
-1. At open, the target chapter's pages enter the dataset **from the target index onward**, not from page 1
-   (the insert path shared by `onPagesLoaded`, `attachCachedPages` and `rebuildPageGrid`).
-2. After that insert, one `scrollToPositionWithOffset(targetRow, 0)`. Keep the `isAboveFirstVisibleRow`
-   gate and rule F2 as they are.
-3. If the landing call does not run because `pendingScrollToCurrent` was already consumed, re-arm it in
-   this same commit — that is the same defect, not a new round.
+The one open question, one line back from the user: **is the last-read page the first visible row?**
 
-Then ask the user **one** question, not a checklist: *is the last-read page the first visible row?*
-Step 4 and the rest of step 5 wait until that answer exists.
+- Yes → T1 closes; step 4 and the rest of step 5 may start.
+- No → no second adapter rule. Record which row came first and whether the marker row was present at all,
+  then stop.
 
 ## Decisions already made — do not reopen
 
@@ -158,5 +159,5 @@ next suspect is thumbnail decoding in `ChapterPageHolder` — a different file a
 
 Nothing here claims a RAM or smoothness win: unproven until steps 1 and 5 are compared on device, and the
 scroll fix stays unproven until S1 reports both a felt verdict and a jank number that moved.
-**The preview landing is not working — that is the open fact of this file.** Last installed APK on
-`d89608bf`: `5b0e9e0401`, launch clean. `todo.md` Phase A stays unchecked, step 2 included.
+**The preview landing is not yet verified — that is the open fact of this file.** Last installed APK on
+`d89608bf`: this commit, launch clean, FATAL 0, crash buffer empty (agent, 2026-11-05). `todo.md` Phase A stays unchecked, step 2 included.
