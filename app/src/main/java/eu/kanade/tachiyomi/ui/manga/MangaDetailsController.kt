@@ -95,6 +95,7 @@ import eu.kanade.tachiyomi.ui.main.SearchActivity
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChaptersSortBottomSheet
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
 import eu.kanade.tachiyomi.ui.manga.track.TrackingBottomSheet
@@ -230,7 +231,7 @@ class MangaDetailsController :
 
     private var query = ""
     private var adapter: MangaDetailsAdapter? = null
-    private var previewAdapter: MangaDetailsAdapter? = null
+    private var previewAdapter: MangaPreviewAdapter? = null
     private var gridSpanResolver: GridSpanResolver? = null
     private var previewOpen = false
     private var swipeAnimating = false
@@ -590,7 +591,7 @@ class MangaDetailsController :
     }
 
     private fun setupPreviewPanel() {
-        val adapter = MangaDetailsAdapter(this).apply {
+        val adapter = MangaPreviewAdapter(this).apply {
             setPageGridMode(true)
             addListener(
                 object : FlexibleAdapter.OnItemClickListener, FlexibleAdapter.OnItemLongClickListener {

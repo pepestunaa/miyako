@@ -13,13 +13,13 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.ChapterPageImage
 import eu.kanade.tachiyomi.databinding.ChapterPageItemBinding
 import eu.kanade.tachiyomi.ui.base.holder.BaseFlexibleViewHolder
-import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.util.system.getResourceColor
 import kotlin.math.roundToInt
 
 class ChapterPageHolder(
     view: View,
-    private val adapter: MangaDetailsAdapter,
+    private val adapter: MangaPreviewAdapter,
 ) : BaseFlexibleViewHolder(view, adapter) {
 
     private val binding = ChapterPageItemBinding.bind(view)

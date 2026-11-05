@@ -8,7 +8,7 @@ import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.source.model.Page
-import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 
 class ChapterPageItem(
     val chapter: Chapter,
@@ -21,7 +21,7 @@ class ChapterPageItem(
     }
 
     override fun createViewHolder(view: View, adapter: FlexibleAdapter<IFlexible<RecyclerView.ViewHolder>>): ChapterPageHolder {
-        return ChapterPageHolder(view, adapter as MangaDetailsAdapter)
+        return ChapterPageHolder(view, adapter as MangaPreviewAdapter)
     }
 
     override fun bindViewHolder(

@@ -4,7 +4,7 @@ import android.view.View
 import androidx.core.view.isVisible
 import eu.kanade.tachiyomi.databinding.ChapterPagesHeaderItemBinding
 import eu.kanade.tachiyomi.ui.base.holder.BaseFlexibleViewHolder
-import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil.Companion.preferredChapterName
 import yokai.i18n.MR
@@ -12,7 +12,7 @@ import yokai.util.lang.getString
 
 class ChapterPagesSectionHolder(
     view: View,
-    private val adapter: MangaDetailsAdapter,
+    private val adapter: MangaPreviewAdapter,
 ) : BaseFlexibleViewHolder(view, adapter) {
 
     private val binding = ChapterPagesHeaderItemBinding.bind(view)

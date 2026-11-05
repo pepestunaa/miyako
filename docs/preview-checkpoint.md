@@ -6,6 +6,15 @@ far the work actually got. Format and rules: "Checkpoint dan Oper Antar Agent" i
 Full pre-compaction narrative (round-by-round landing history, both data hypotheses, the audit
 tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 
+## Adapter refactor
+
+- Step 1: `MangaPreviewAdapter` now owns the page-grid state, landing, page loading, and thumbnail dataset.
+- `MangaDetailsAdapter` now owns only the regular chapter list and chapter swipe/filter behavior.
+- Preview page items and holders cast to the preview adapter; the layout manager selects grid spans by adapter type.
+- Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
+- Emulator audit: PENDING.
+- Next: move the preview item and section classes into `ui/manga/preview/` without changing behavior.
+
 ## Resuming here with no prior context
 
 1. **The landing bug (T1) is open and the direction is decided.** Start at "Next action" below.

@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import eu.kanade.tachiyomi.R
+import eu.davidea.flexibleadapter.items.IFlexible
+import eu.kanade.tachiyomi.ui.manga.chapter.BaseChapterAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.widget.getFirstCompletePos
 import eu.kanade.tachiyomi.widget.getFirstPos
 
@@ -16,7 +19,7 @@ import eu.kanade.tachiyomi.widget.getFirstPos
  */
 class ChapterLayoutManager(
     context: Context,
-    private val adapter: MangaDetailsAdapter,
+    private val adapter: BaseChapterAdapter<IFlexible<*>>,
     initialSpanCount: Int,
 ) : GridLayoutManager(context, initialSpanCount) {
 
@@ -37,7 +40,7 @@ class ChapterLayoutManager(
             }
 
             override fun getSpanSize(position: Int): Int {
-                if (!adapter.pageGridMode) return spanCount
+                if (adapter !is MangaPreviewAdapter || !adapter.pageGridMode) return spanCount
                 return when (adapter.getItem(position)) {
                     is ChapterItem, is ChapterPageItem -> 1
                     else -> spanCount
