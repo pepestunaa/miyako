@@ -89,27 +89,20 @@ Nothing committed is known to be broken; the bug the session chased is simply st
 HEAD `5b0e9e0401`, that APK installed on `d89608bf`, launch clean (FATAL 0, crash buffer empty).
 **Nothing was pushed.** `todo.md` Phase A stays unchecked, step 2 included.
 
-### What each commit is actually worth
+### Worth keeping from those rounds
 
-2d, 2e, 2f and 2h each closed a defect that was real and is still closed: the gate measuring the wrong
-coordinate space, a one-shot landing consumed by an attach that had no marker row, an ungated insert above
-the anchor, and a gate sitting in front of the page-list **request** (that one is what made a parked chapter
-show a bare header with nothing loading until a drag). 2g generalised the rule to all three mutation sites.
-**2i was wrong and 2j reverted it**: `updateItems` read `getChildAt(0)` while the landing's
-`scrollToPositionWithOffset` was still pending and not laid out, so it captured item 0 and pinned the panel
-to the top of the list on purpose.
+2d, 2e, 2f and 2h each closed a real defect: the gate measuring the wrong coordinate space, a one-shot
+landing consumed by an attach that had no marker row, an ungated insert above the anchor, and a gate
+sitting in front of the page-list **request** (that one caused the bare header with nothing loading until a
+drag). 2g generalised the rule to all three mutation sites. **2i was wrong and 2j reverted it**:
+`updateItems` read `getChildAt(0)` while the landing's `scrollToPositionWithOffset` was still pending and
+not laid out, so it captured item 0 and pinned the panel to the top of the list on purpose.
 
-### The one piece of hard evidence
-
-`C:/tmp/t1_fail.png` (agent, 2026-11-05, panel left open in the failing state): viewport at **item 0** of
-the dataset, Ch. 0 header clipped behind the app bar; Ch. 0 / Ch. 1 / Ch. 1 - Page 1 showing "Pages
-189 / 52 / 55" with **no thumbnail rows** — the gate's own footprint for sections above the anchor; and
-**Ch. 2's rows attached** (pages 1-9 on screen). Temporary file: take a fresh one in the same state rather
-than trusting this path.
-
-Read as "the landing ran and a dataset swap returned the viewport to 0", which is what 2j was written
-against. **G1 failing means that reading is not sufficient.** It is not disproved either — the shot may have
-been taken while the panel was still mid-open. Treat it as the strongest untested hypothesis, not a fact.
+The one piece of hard evidence is `C:/tmp/t1_fail.png` (2026-11-05, failing state, temporary path — take a
+fresh one rather than trusting it): viewport at **item 0**, Ch. 0 / Ch. 1 headers showing "Pages 189/52/55"
+with **no thumbnail rows**, Ch. 2's rows attached (pages 1-9 on screen). It reads as "the landing ran and a
+dataset swap returned the viewport to 0", which is what 2j was written against, but G1 failing means that
+reading is not sufficient and the shot may have been taken mid-open. Hypothesis, not fact.
 
 ### A data rule, not a layout rule (raised by the main session, unproven)
 
@@ -150,10 +143,10 @@ open path in `MangaDetailsController`, which was never read end to end:
 - `setChapters` is called from the chapter/history streams (three sites) and each call rebuilds and, since
   2j, re-lands.
 
-Suspect zero, above the three above: `prewarmPreviewPanel` itself. Its own comment says it exists so the
-first swipe "only translates a grid that is already laid out and **anchored**" — that is vocabulary from the
-machine step 2 deleted. It lands the panel off-screen, then hides it again after `PANEL_WARM_SETTLE_MS`,
-which is the timer pattern the guardrails forbid. That reading was tested and did not hold — see below.
+Suspect zero was `prewarmPreviewPanel` — it lands the panel off-screen and hides it again after
+`PANEL_WARM_SETTLE_MS`, and its comment still says the grid is "laid out and **anchored**". Tested below
+and cleared. Full round-by-round accounting of the seven landing commits (`2d`-`2j`, including the wrong
+one, `2i`, reverted by `2j`) and the `C:/tmp/t1_fail.png` evidence: `git show 2089d99c9a:docs/preview-checkpoint.md`.
 
 ### Answered 2026-11-05 (diagnosis only, reading HEAD `5b0e9e0401`): the ordering is not the cause
 
