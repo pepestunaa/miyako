@@ -57,11 +57,17 @@ Target uji project ini hanya satu: AVD `miyako-dev` — x86_64, API 36, 1080x240
 - Start: `<sdk>/emulator/emulator.exe -avd miyako-dev -gpu host`. Proses GUI — jalankan detached, jangan
   ditunggu di shell foreground. Keluar `FATAL: Running multiple emulators with the same AVD` berarti
   instance lama masih hidup: cek `adb devices` dulu, jangan start ulang.
-- Siap: `adb wait-for-device`, lalu `adb shell getprop sys.boot_completed` = `1`.
-- Hentikan: `adb -s emulator-5554 emu kill` — jangan `taskkill`.
+- Siap: `adb wait-for-device`, lalu `adb shell getprop sys.boot_completed` = `1`. Boot dari snapshot ±45 detik,
+  `adb install -r` APK 39 MB ±6 detik.
+- Hentikan dengan `adb -s emulator-5554 emu kill` (jangan `taskkill`) supaya snapshot ikut tersimpan —
+  state app seperti history baca chapter ikut kembali di boot berikutnya. `taskkill` memutus tanpa save,
+  dan `-no-snapshot-save` membuat sesi itu hilang lagi.
+- Instance AVD bisa mati sendiri ketika build Gradle berat berjalan bersamaan (pernah terjadi di sesi ini).
+  Jangan telusuri sebabnya dulu: cek `adb devices` sebelum install, start ulang, lanjut.
 
-Build debug (sekitar 1-2 menit, bukan `assembleStandardRelease`). ABI **wajib** sama dengan `abi.type` AVD;
-APK arm64-v8a ditolak emulator dengan `INSTALL_FAILED_NO_MATCHING_ABIS`:
+Build debug (bukan `assembleStandardRelease`). ABI **wajib** sama dengan `abi.type` AVD; APK arm64-v8a
+ditolak emulator dengan `INSTALL_FAILED_NO_MATCHING_ABIS`. Build pertama untuk ABI baru itu lambat —
+terukur 6m22s waktu AVD-nya juga jalan — bukan 1-2 menit seperti incremental ABI yang sudah pernah dipakai:
 
 ```sh
 ./gradlew :app:assembleStandardDebug -PdevAbi=x86_64 --console=plain -x lint
