@@ -37,23 +37,19 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS |
 | 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS; the capture itself was wrong, reverted by 2j |
 | 2j | a grid rebuild always re-applies the target landing (rule F2, chosen by the user) | `5b0e9e0401` | ok | FAIL (user, 2026-11-05) — G1 FAIL, G2 not run. Topic stopped here |
-| 3 | target chapter enters at the last-read page, one landing after the insert | this commit | ok | PENDING — one question to the user, below |
+| 3 | target chapter enters first, cached rows cannot push the initial landing | this commit | ok | PENDING — emulator audit required |
 | 4 | disable-then-measure the priority loader chain | — | — | sequenced after T1, see Decisions |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
 | 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — never started, see "Step 6" |
 
-## Next action � STOPPED (row 3 reverted)
+## Next action
 
-Row 3's dataset-side filter (`rowsFor()` dropping pages with `index < last_page_read`) removed the pages
-above the marker from the dataset entirely, so the user could not browse upward to them. The marker row
-did not become the first visible row. Reverted to the pre-row-3 adapter. No second adapter rule added.
+Step 3 now builds the initial grid with the target chapter's cached pages only. Other cached chapters remain
+header-only until the target landing has completed, while page lists for non-target chapters remain lazy.
+The controller no longer issues a second landing during swipe begin or panel prewarm.
 
-What was learned: dropping pages above the target removes the stacking but also removes content the user
-scrolls back to; the compensating insert (step 5) is a prerequisite for this direction, not a follow-up.
-The landing target is still lost to the insert-above-viewport problem, not row count alone. Reopen only
-after step 5's compensating insert exists, or via a different mechanism.
-
-Next: resume step 6 (panel scroll weight) or step 5 (compensating insert), at the user's call.
+Next: install the debug APK and audit first open, reopen, upward/downward scrolling, reader navigation, and
+clean logcat. If landing passes, continue with step 4 as a separate measurement commit.
 
 ## Decisions already made — do not reopen
 

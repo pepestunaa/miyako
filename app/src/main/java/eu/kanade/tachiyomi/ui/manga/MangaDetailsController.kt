@@ -703,9 +703,6 @@ class MangaDetailsController :
                 showPreviewScrims()
                 dragStartTranslation = width.toFloat()
                 dragWidth = width.toFloat()
-                // Anchor while the drag is still in progress: the list is settled on the
-                // last-read page by the time the panel finishes sliding in.
-                previewAdapter?.scrollToCurrentPage()
             } else {
                 dragStartTranslation = 0f
                 dragWidth = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
@@ -841,7 +838,6 @@ class MangaDetailsController :
             previewWarmed = true
             panel.translationX = width
             panel.visibility = View.VISIBLE
-            adapter.scrollToCurrentPage()
             panel.post {
                 adapter.loadVisiblePageSections()
                 panel.postDelayed({

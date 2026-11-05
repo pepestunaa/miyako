@@ -57,6 +57,7 @@ class MangaDetailsAdapter(
     private var currentPage: Pair<Long, Int>? = null
     private var anchorChapterId: Long? = null
     private var pendingScrollToCurrent = false
+    private var landingPending = false
     private var priorityChapterId: Long? = null
 
     val delegate: MangaDetailsInterface = controller
@@ -89,6 +90,11 @@ class MangaDetailsAdapter(
             return
         }
         refreshCurrentPage()
+        val landingChapterId = currentPage?.first ?: anchorChapterId
+        landingPending = landingChapterId != null
+        if (landingPending) {
+            pendingScrollToCurrent = true
+        }
         val gridItems = mutableListOf<IFlexible<*>>()
         for (chapterItem in filteredItems()) {
             val chapter = chapterItem.chapter
@@ -103,9 +109,15 @@ class MangaDetailsAdapter(
             if (!chapterPages.containsKey(chapterId)) section.pagesAttached = false
             gridItems.add(section)
             val pages = chapterPages[chapterId]
-            // A rebuild laying cached rows in above the parked target moves the viewport just as surely
-            // as an insert does, so the gate applies here too: header-only until they scroll back in.
-            if (pages != null && (section.pagesAttached || !pageAttachIsHeldBack(section))) {
+            // During the initial landing, only the target chapter may contribute cached rows. Other
+            // cached chapters must stay header-only until the target is settled, or they can push it
+            // down while the adapter is still building the first viewport.
+            val mayAttachCachedPages = if (landingPending) {
+                chapterId == landingChapterId
+            } else {
+                section.pagesAttached || !pageAttachIsHeldBack(section)
+            }
+            if (pages != null && mayAttachCachedPages) {
                 pages.forEach { page ->
                     gridItems.add(ChapterPageItem(chapter, page, isCurrentPage(chapter, page)))
                 }
@@ -117,6 +129,14 @@ class MangaDetailsAdapter(
         // A dataset swap scraps every child, so a rebuild cannot keep the panel where it was. In grid mode
         // the position is defined by the last-read page, so that is where a rebuild puts it.
         scrollToCurrentPage()
+    }
+
+    private fun completeLandingAfterLayout() {
+        val recycler = recyclerView ?: return
+        recycler.doOnNextLayout {
+            landingPending = false
+            pendingScrollToCurrent = false
+        }
     }
 
     private fun updateItems(items: List<IFlexible<*>>) {
@@ -187,7 +207,7 @@ class MangaDetailsAdapter(
      */
     private fun pageAttachIsHeldBack(section: ChapterPagesSectionItem): Boolean {
         val chapterId = section.chapter.id ?: return false
-        if (pendingScrollToCurrent &&
+        if (landingPending &&
             (chapterId == currentPage?.first || chapterId == anchorChapterId || chapterId == priorityChapterId)
         ) {
             return false
@@ -239,8 +259,9 @@ class MangaDetailsAdapter(
 
         val pagePosition = currentPagePosition()
         if (pagePosition != null) {
-            pendingScrollToCurrent = false
             anchorToCurrentPage(pagePosition)
+            if (landingPending) completeLandingAfterLayout()
+            else pendingScrollToCurrent = false
             return
         }
         // The current chapter's thumbnails may not be loaded yet: park on its section and
@@ -254,6 +275,7 @@ class MangaDetailsAdapter(
             return
         }
         scrollToRowAtTop(recycler, sectionPosition)
+        if (currentPage == null && landingPending) completeLandingAfterLayout()
         loadVisiblePageSections()
     }
 
@@ -291,8 +313,9 @@ class MangaDetailsAdapter(
     private fun maybeScrollToCurrentPage(chapterId: Long) {
         if (!pendingScrollToCurrent || currentPage?.first != chapterId) return
         val position = currentPagePosition() ?: return
-        pendingScrollToCurrent = false
         anchorToCurrentPage(position)
+        if (landingPending) completeLandingAfterLayout()
+        else pendingScrollToCurrent = false
     }
 
     private fun loadSectionPages(section: ChapterPagesSectionItem) {
