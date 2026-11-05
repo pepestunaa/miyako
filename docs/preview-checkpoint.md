@@ -111,6 +111,31 @@ Read as "the landing ran and a dataset swap returned the viewport to 0", which i
 against. **G1 failing means that reading is not sufficient.** It is not disproved either — the shot may have
 been taken while the panel was still mid-open. Treat it as the strongest untested hypothesis, not a fact.
 
+### A data rule, not a layout rule (raised by the main session, unproven)
+
+`refreshCurrentPage()` sets `currentPage` only when `!chapter.read && chapter.last_page_read > 0`. When the
+last-read chapter is flagged **read**, `currentPage` stays null, so `scrollToCurrentPage()` falls back to
+`anchorChapterId`, parks on that chapter's **header**, and every page of the chapter then attaches below
+the header — page 11 sits several rows down behind pages 1-10, and `isCurrentPage` is false for every row,
+so **no marker is drawn anywhere**. That is branch A with no viewport drift at all: nothing is inserted
+above the viewport, the target simply was never a page.
+
+- Fits the record: the 2026-11-04 audit already wrote "no blue marker", and the 2026-11-05 answer was
+  "stacked with the earlier pages of that chapter".
+- Does not fit the agent's `chapterId == null` path: that branch calls `scrollToPosition(0)` and cannot
+  park on Ch. 2's header, yet T1 passed. The two are different bugs; do not merge them. Both may fire at
+  different moments depending on history arrival and the chapter filters.
+- Counter-evidence, so nobody over-reads this: the last read is page **11 of 26**, i.e. mid-chapter, which
+  normally means `read == false` and therefore `currentPage` should be set. The "no blue marker" line from
+  2026-11-04 is also fully explained by the rows not being attached at all. This branch is only reachable if
+  Ch. 2 was finished or marked read afterwards — the toggle check decides, the reasoning does not.
+- Settled without reading more code, by one check: in the chapter list, see whether Ch. 2 is marked read,
+  toggle it unread, and reopen the preview. Landing on page 11 with a blue marker after the toggle means
+  the whole landing problem is this data rule.
+- If it is the rule, it contradicts the recorded decision in "Decisions already made" (preview target =
+  the last-read page). Then the fix is a decision about what "last read" means for a finished chapter -
+  not an eighth rule in the adapter.
+
 ### If it is resumed: do not start in the adapter
 
 Seven rounds happened in `MangaDetailsAdapter`. The thing that decides where the viewport ends up is the
