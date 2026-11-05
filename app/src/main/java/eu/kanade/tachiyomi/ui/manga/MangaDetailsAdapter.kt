@@ -403,18 +403,6 @@ class MangaDetailsAdapter(
         }
     }
 
-    fun findPositionForChapter(chapterId: Long): Int? {
-        for (position in 0 until itemCount) {
-            val chapter = when (val item = getItem(position)) {
-                is ChapterItem -> item.chapter
-                is ChapterPagesSectionItem -> item.chapter
-                else -> null
-            }
-            if (chapter?.id == chapterId) return position
-        }
-        return null
-    }
-
     private fun refreshCurrentPage() {
         // Follow the most recently read chapter instead of the next unread one: reading ahead
         // must not leave the marker on an older chapter that was never finished.
@@ -448,14 +436,6 @@ class MangaDetailsAdapter(
         } else {
             items.filter { it.name.contains(s, true) }
         }
-    }
-
-    fun indexOf(item: ChapterItem): Int {
-        return items.indexOf(item)
-    }
-
-    fun indexOf(chapterId: Long): Int {
-        return currentItems.indexOfFirst { it is ChapterItem && it.id == chapterId }
     }
 
     fun performFilter() {
