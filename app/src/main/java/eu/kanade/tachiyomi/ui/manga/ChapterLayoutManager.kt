@@ -7,7 +7,7 @@ import eu.kanade.tachiyomi.R
 import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.ui.manga.chapter.BaseChapterAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.widget.getFirstCompletePos
 import eu.kanade.tachiyomi.widget.getFirstPos

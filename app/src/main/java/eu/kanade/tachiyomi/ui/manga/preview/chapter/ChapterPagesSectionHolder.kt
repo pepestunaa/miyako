@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.ui.manga.chapter
+package eu.kanade.tachiyomi.ui.manga.preview.chapter
 
 import android.view.View
 import androidx.core.view.isVisible

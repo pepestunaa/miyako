@@ -22,9 +22,9 @@ import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.manga.chapter.BaseChapterAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageHolder
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPagesSectionItem
+import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPageHolder
+import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPagesSectionItem
 import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
 import eu.kanade.tachiyomi.ui.manga.MangaDetailsController
 import eu.kanade.tachiyomi.ui.manga.MangaDetailsPresenter

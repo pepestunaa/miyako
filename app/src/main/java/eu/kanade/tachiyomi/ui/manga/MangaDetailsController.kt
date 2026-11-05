@@ -94,7 +94,7 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.main.SearchActivity
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
-import eu.kanade.tachiyomi.ui.manga.chapter.ChapterPageItem
+import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
 import eu.kanade.tachiyomi.ui.manga.chapter.ChaptersSortBottomSheet
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem

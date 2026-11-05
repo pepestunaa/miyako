@@ -13,7 +13,10 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 - Preview page items and holders cast to the preview adapter; the layout manager selects grid spans by adapter type.
 - Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
 - Emulator audit: PENDING.
-- Next: move the preview item and section classes into `ui/manga/preview/` without changing behavior.
+- Step 2: preview page items, holders, and section classes now live in `ui/manga/preview/chapter/`.
+- Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
+- Emulator audit: PENDING.
+- Next: extract preview state and loader responsibilities without changing behavior.
 
 ## Resuming here with no prior context
 
