@@ -128,14 +128,37 @@ open path in `MangaDetailsController`, which was never read end to end:
 Suspect zero, above the three above: `prewarmPreviewPanel` itself. Its own comment says it exists so the
 first swipe "only translates a grid that is already laid out and **anchored**" — that is vocabulary from the
 machine step 2 deleted. It lands the panel off-screen, then hides it again after `PANEL_WARM_SETTLE_MS`,
-which is the timer pattern the guardrails forbid. If the ordering question below shows the landing is fine
-and the warm pass is what puts the viewport back to 0, the fix is deleting the warm path, not adding to it.
+which is the timer pattern the guardrails forbid. That reading was tested and did not hold — see below.
 
-The question to answer first, by reading those functions and the `previewOpen` / `previewWarmed` flags:
-**which of prewarm / setChapters / beginDrag runs last, and is the scroll it set still pending when the
-panel becomes visible?** Two prohibitions: no timer, `postDelayed` chain, anchor state or second
-`viewportMove` flag; and no new device test list before that question is answered — the user has run five
-rounds on a bug that is still there.
+### Answered 2026-11-05 (diagnosis only, reading HEAD `5b0e9e0401`): the ordering is not the cause
+
+- **Order in a normal open:** `setChapters` (inside `updateChapters`, which calls prewarm right after) →
+  prewarm (`view.postDelayed`, 1600 ms) → `beginDrag` (the user's gesture). **`beginDrag` runs last.**
+  `setChapters` is last only when `updateChapters()` fires again after the open (toggle-read, filter,
+  refresh, `onAttach` after the reader); its rebuild re-lands, which is F2 by design.
+- **The scroll is pending, and pending is fine.** Both `prewarmPreviewPanel` and `beginDrag` flip the
+  panel to `VISIBLE` and then call `scrollToCurrentPage()` in the same synchronous block, so no traversal
+  runs in between. `scrollToRowAtTop` uses `scrollToPositionWithOffset`, whose contract is "remember the
+  row, apply it at the next `onLayoutChildren`". A GONE child is never laid out, so a pending scroll even
+  survives the closed panel. The warm pass consumes its own landing; `beginDrag` then issues a fresh one.
+- **Prewarm cannot overwrite the open:** `previewWarmed` is set once, and the delayed block bails on
+  `previewOpen`. It never runs after the panel is open. **Suspect zero is cleared.**
+- One real but separate defect: a swipe started inside the 1600 ms window sets neither `previewOpen` nor
+  `swipeAnimating` until UP, so the warm block still fires and yanks `translationX` back to `width` and
+  re-lands mid-drag. One frame of jank; the final position is still the drag's own landing.
+- **What the ordering proves instead:** the last landing written is `beginDrag`'s, and it picks its row
+  from **data** (`currentPagePosition()` walks `getItem`), never from geometry. So the bug is the value it
+  is handed, not when it runs. Exactly one branch of `scrollToCurrentPage` writes 0:
+  `chapterId == null && presenter.historyLoaded → scrollToPosition(0)`. `chapterId` is null iff
+  `refreshCurrentPage()` cannot find the last-read chapter in `presenter.chapters` — the **filtered**
+  list, not the raw one — or `allHistory` is empty and `getNextUnreadChapter()` is null. That same lookup
+  sets `currentPage`, so on those inputs **no page row in the dataset carries `isCurrentPage`.**
+
+**The one device observation that settles it** (failing state, panel at item 0): flick down to Ch. 2
+page 11. If that row shows the last-read marker, the target was computed and its position was lost after
+the landing — back to the adapter/gate path. If no row in the panel is marked at all,
+`scrollToCurrentPage` took the `chapterId == null` branch and went to 0 by design, and the fault is
+`refreshCurrentPage` resolving against the filtered chapter list.
 
 ## Step 6, never started: measure the panel scroll
 
