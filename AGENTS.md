@@ -24,7 +24,7 @@ Aturan dan konvensi kerja untuk siapa pun (manusia atau agent) yang mengerjakan 
 
 1. Baca `todo.md`, cek `git status`, dan pahami kode terkait sebelum mengubah apa pun.
 2. Implementasi seminimal mungkin dan fokus pada item yang dikerjakan — tanpa refactor atau abstraksi yang tidak diminta.
-3. Build, install ke device, dan uji manual fitur yang berubah (lihat bagian **Audit E2E**). Compile sukses bukan bukti fitur berjalan.
+3. Build, install ke emulator, dan uji fitur yang berubah dengan gestur adb (lihat bagian **Audit E2E**). Compile sukses bukan bukti fitur berjalan.
 4. Commit per topik (lihat konvensi di bawah), lalu check off item todo (tanpa catatan), lalu push `dev` + `master`.
 5. Laporkan hasil singkat di akhir: apa yang berubah, commit hash, dan hasil verifikasi.
 
@@ -46,87 +46,95 @@ docs: rewrite the README with clean, consistent structure
 - `todo.md` hanya file lokal: sudah di-ignore dan tidak dilacak git, jadi jangan commit file itu.
 - Satu commit = satu topik logis; file-file terkait satu perbaikan boleh digabung.
 
-## Build dan Verifikasi di Device
+## Build dan Verifikasi di Emulator (AVD)
 
-Untuk development, selalu pakai build debug (bukan `assembleStandardRelease`):
+Target uji project ini hanya satu: AVD `miyako-dev` — x86_64, API 36, 1080x2400 @420dpi, serial tetap
+`emulator-5554`. HP fisik bukan lagi target build maupun audit; jangan pakai angka atau koordinat HP lama.
+
+- `<sdk>` = `C:/Users/surya/AppData/Local/Android/Sdk` (isi `sdk.dir` di `local.properties`).
+- adb: `<sdk>/platform-tools/adb.exe` saja. Jangan dicampur `/c/platform-tools/adb.exe` (35.0.2 vs 37.0.1
+  → `adb server version doesn't match`, device hilang-timbul). Sudah terlanjur bentrok: `adb kill-server`.
+- Start: `<sdk>/emulator/emulator.exe -avd miyako-dev -gpu host`. Proses GUI — jalankan detached, jangan
+  ditunggu di shell foreground. Keluar `FATAL: Running multiple emulators with the same AVD` berarti
+  instance lama masih hidup: cek `adb devices` dulu, jangan start ulang.
+- Siap: `adb wait-for-device`, lalu `adb shell getprop sys.boot_completed` = `1`.
+- Hentikan: `adb -s emulator-5554 emu kill` — jangan `taskkill`.
+
+Build debug (sekitar 1-2 menit, bukan `assembleStandardRelease`). ABI **wajib** sama dengan `abi.type` AVD;
+APK arm64-v8a ditolak emulator dengan `INSTALL_FAILED_NO_MATCHING_ABIS`:
 
 ```sh
-# Build debug (sekitar 1-2 menit, sudah auto-signed)
-./gradlew :app:assembleStandardDebug -PdevAbi=arm64-v8a --console=plain -x lint
+./gradlew :app:assembleStandardDebug -PdevAbi=x86_64 --console=plain -x lint
 
 # Output
-app/build/outputs/apk/standard/debug/app-standard-arm64-v8a-debug.apk
+app/build/outputs/apk/standard/debug/app-standard-x86_64-debug.apk
 ```
 
 - Debug sudah di-sign otomatis dengan debug keystore — langsung `adb install -r`, tanpa zipalign/apksigner.
 - ApplicationId debug: `eu.kanade.tachiyomi.debugYokai`; launcher: `eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy`. Debug dan rilis bisa terpasang berdampingan.
-- `assembleStandardRelease` hanya untuk memverifikasi build rilis (minify/shrink). Output: `app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk`.
+- Install: `adb -s emulator-5554 install -r <apk>`.
+- Launch: `adb -s emulator-5554 shell am start -n eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy`.
+- Screenshot: `adb -s emulator-5554 exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
+- Gestur: `adb -s emulator-5554 shell input swipe x1 y1 x2 y2 <ms>`, `input tap x y`,
+  `input keyevent KEYCODE_BACK`. Ambil koordinat dari screenshot emulator, bukan dari ingatan HP.
+- `assembleStandardRelease` hanya untuk memverifikasi build rilis (minify/shrink). Output: `app/build/outputs/apk/standard/release/app-standard-<abi>-release-unsigned.apk`.
 - APK release tidak di-sign otomatis: `zipalign -f 4` lalu `apksigner.bat sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --out ...`.
 - `apksigner` hanya tersedia sebagai `apksigner.bat` di build-tools; gunakan file `.bat`.
 - Pakai path `C:/tmp/...` untuk intermediate APK (bukan `/tmp`, zipalign gagal di sana).
-- Device uji: OPPO CPH1931 (`d89608bf`), 720x1600 @320dpi, Android 10.
-- adb: `/c/platform-tools/adb.exe`.
-- Install: `adb -s d89608bf install -r <apk>`.
-- Screenshot: `adb -s d89608bf exec-out screencap -p > C:/tmp/foo.png`, lalu baca dengan tool Read.
 - Jangan menambah `Log.d` untuk mengaudit: diagnostik preview sudah dibuang dan audit dibaca dari perilaku
   di layar plus `FATAL` / buffer crash, bukan dari tag log.
-- Jangan menguji berlebihan saat user sedang memakai HP; ambil snapshot singkat dan terkontrol.
 
 ## Audit E2E
 
-Setiap perubahan fitur/UI wajib melewati audit end-to-end di device fisik sebelum dilaporkan selesai. Urutannya:
+Setiap perubahan fitur/UI wajib melewati audit end-to-end di emulator sebelum dilaporkan selesai. Urutannya:
 
-1. Build + install build debug terbaru (lihat bagian sebelumnya).
+1. Pastikan AVD jalan dan sudah boot, lalu build + install build debug terbaru (lihat bagian sebelumnya).
 2. Bersihkan logcat, lalu launch app:
 
    ```sh
-   adb -s d89608bf logcat -c
-   adb -s d89608bf shell am start -n eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy
+   adb -s emulator-5554 logcat -c
+   adb -s emulator-5554 shell am start -n eu.kanade.tachiyomi.debugYokai/.MainActivityDefaultDummy
    ```
 
 3. Uji golden path **plus edge case** fitur yang berubah. Langkah konkret tiap topik tidak ditulis di
    sini — dia hidup di bagian "Next action" file status topik itu, dalam bentuk daftar bernomor.
 4. Cek crash dan error:
-   - `adb -s d89608bf logcat -d | grep -c FATAL` harus `0`.
-   - Buffer crash harus kosong: `adb -s d89608bf logcat -d -b crash`.
+   - `adb -s emulator-5554 logcat -d | grep -c FATAL` harus `0`.
+   - Buffer crash harus kosong: `adb -s emulator-5554 logcat -d -b crash`.
 5. Regression check di sekitar fitur yang menyentuh file yang sama (navigasi back, gesture list, tema).
 6. Baru setelah lolos audit: commit per topik, check off todo, lalu push.
 
 Aturan audit:
 
-- Compile sukses bukan bukti fitur benar; perubahan UI wajib diuji di device.
-- Jangan menguji berlebihan saat user sedang memakai HP.
-- Siapa yang memegang HP dan siapa yang membaca log: lihat bagian **Pembagian Kerja: User dan Agent**.
+- Compile sukses bukan bukti fitur benar; perubahan UI wajib diuji di emulator.
+- Batas sesi audit — siapa yang menyetir dan seberapa banyak gestur: lihat **Audit di Emulator: Driver dan Batasnya**.
 - Hasil audit dilaporkan di akhir sesi — **bukan** ditulis sebagai catatan di `todo.md`.
 - Perubahan non-UI (build/dependency) cukup: build → install → launch → logcat bersih → tidak ada regresi saat startup.
 
-## Pembagian Kerja: User dan Agent (Audit Device)
+## Audit di Emulator: Driver dan Batasnya
 
-Kesepakatan: **user yang menguji di HP, agent yang menguji di teks dan di kode.** Sesi audit yang
-menyerahkan seluruhnya ke agent sudah tiga kali mati kehabisan konteks — bukan karena instruksi kurang,
-tetapi karena screenshot, output gradle, dan dump logcat menumpuk di satu thread yang tidak bisa dibuang.
+Sejak target uji pindah ke AVD, **agent yang menyetir layar** lewat `adb shell input` + `screencap`;
+tidak ada lagi perangkat yang harus diperebutkan. Yang membuat sesi audit mati tetap sama: screenshot,
+output gradle, dan dump logcat menumpuk di satu thread yang tidak bisa dibuang. Karena itu batasnya
+dipasang di sisi agent:
 
-- Agent menulis langkah uji sebagai daftar bernomor dengan hasil yang diharapkan, **di file status
-  topik**, bukan di prompt atau chat.
-- Agent hanya melakukan yang berupa baris teks: build, install, `logcat -c`, `logcat -d | grep -c FATAL`,
-  `logcat -d -b crash`. Tidak ada gestur layar di sisi agent kecuali user menyatakan tidak bisa pegang HP.
-- User menjalankan daftar itu dan mengirim balik **satu baris per butir**: `T2 FAIL — header Ch. 2,
-  thumbnail tetap kosong sampai digeser`. Hanya apa yang terlihat; tanpa dugaan penyebab.
-- Agent mencatat hasil dengan provenance di file status: `PASS (user, YYYY-MM-DD)`. `PASS` tanpa
-  penanda siapa dianggap belum diuji. Provenance hanya di file status — baris `evidence:` di commit harus
-  tetap `verify=<PASS|PENDING|N/A>` polos, kalau tidak hook `commit-msg` menolaknya.
-- Audit yang sudah tercatat terverifikasi **tidak diulang**. Butuh angka tambahan? Minta satu butir
+- Daftar uji ditulis sebagai daftar bernomor dengan hasil yang diharapkan, **di file status topik**,
+  bukan di prompt atau chat.
+- Satu ronde audit = build → install → launch → cek foreground → **maksimal 7 gestur** → commit checkpoint.
+  Thread yang sudah panjang tidak diselamatkan dengan pesan lebih pendek; ronde berikutnya di thread baru.
+- Bukti teks lebih dulu daripada tangkapan layar: baris database lewat `run-as` + salin DB (app debug
+  boleh), `dumpsys`, config, `git show`. Screenshot hanya untuk yang memang hanya bisa dilihat di layar,
+  maksimal satu per butir hasil. Gambar adalah biaya konteks termahal di sesi audit.
+- Hasil dicatat di file status dengan provenance: `PASS (emulator, YYYY-MM-DD)`, atau
+  `PASS (user, YYYY-MM-DD)` kalau user menjalankan sendiri dan melaporkan. `PASS` tanpa penanda siapa
+  dianggap belum diuji. Provenance hanya di file status — baris `evidence:` di commit harus tetap
+  `verify=<PASS|PENDING|N/A>` polos, kalau tidak hook `commit-msg` menolaknya.
+- Audit yang sudah tercatat terverifikasi **tidak diulang**. Butuh angka tambahan? Ambil satu butir
   spesifik, bukan satu sesi uji ulang.
-- Screenshot dibaca maksimal satu per butir, dan hanya kalau laporan user ambigu. Gambar adalah biaya
-  konteks termahal di sesi audit.
-- Sebelum minta observasi ke user, cek dulu apakah bukti itu ada dalam bentuk teks: baris database lewat
-  `run-as` + salin DB (app debug boleh), `dumpsys`, config, `git show`. Observasi layar hanya untuk yang
-  memang hanya bisa dilihat di layar. Dua hipotesis landing mati dalam dua perintah teks, setelah dua sesi
-  diminta menatap panel.
-- Kalau user sedang pegang HP, agent tetap boleh bekerja: jawab pertanyaan kode dulu, simpan sebagai
-  hipotesis yang tercatat, baru minta satu observasi yang membedakan hipotesis-hipotesis itu.
-- Kalau user berhalangan: agent boleh mengaudit sendiri dengan batas tegas — build → install → cek
-  foreground → maksimal 7 interaksi → selesai, lalu commit checkpoint. Mode ini lambat dan boros; bukan default.
+- Daftar uji tidak boleh bertambah saat satu bug belum terjawab; tiap ronde baru harus didahului satu
+  pertanyaan kode yang dijawab dari sumber, bukan dari layar.
+- Jangan merebut emulator saat user sedang memakainya — tanya dulu apakah AVD sedang dipakai, sebelum
+  menjalankan gestur apa pun.
 
 ## Checkpoint dan Oper Antar Agent
 
@@ -138,7 +146,7 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
   evidence: build=<ok|fail|n/a> | verify=<PASS|PENDING|N/A> | next=<satu langkah berikutnya>
   ```
 
-  `verify` = hasil uji yang relevan dengan perubahannya: audit device untuk UI, test atau pengukuran untuk non-UI, `N/A` untuk dokumen.
+  `verify` = hasil uji yang relevan dengan perubahannya: audit emulator untuk UI, test atau pengukuran untuk non-UI, `N/A` untuk dokumen.
 - `PENDING` artinya kode berubah dan build lolos, **tetapi belum diuji**. Itu bukan status selesai. Checkbox `todo.md` hanya untuk yang `PASS`.
 - Untuk pekerjaan lebih dari satu commit, jaga satu file status per topik (mis. `docs/preview-checkpoint.md`): tabel langkah → commit → build → verify, diperbarui di commit yang sama dengan kodenya — jangan menyusul.
 - Kalau budget atau sisa waktu menipis: tulis checkpoint dan commit **lebih dulu**, baru berhenti.
@@ -148,10 +156,9 @@ Pekerjaan multi-step harus bisa diambil alih agent lain tanpa membaca log chat.
 - **Satu percobaan perbaikan per penyebab yang sudah terbukti.** Perbaikan yang ditulis tanpa penyebab yang
   terbukti adalah tebakan, dan tebakan beruntun di file yang sama adalah pola yang membuat topik ini mati
   tujuh ronde (lihat `docs/preview-checkpoint.md`).
-- **Aturan berhenti 2 ronde.** Gejala yang sama masih gagal setelah 2 perbaikan di device → berhenti: tulis
+- **Aturan berhenti 2 ronde.** Gejala yang sama masih gagal setelah 2 perbaikan di emulator → berhenti: tulis
   apa yang sudah tersingkir dan apa pertanyaan kode yang tersisa di file status, commit, serahkan ke user.
-- **Anggota tim yang menyentuh layar adalah user.** Daftar uji device tidak boleh bertambah saat satu bug
-  belum terjawab; tiap ronde baru harus didahului satu pertanyaan kode yang dijawab dari sumber, bukan dari HP.
+  Selama satu bug belum terjawab, daftar uji tidak boleh melebar (lihat **Audit di Emulator: Driver dan Batasnya**).
 - **Agent menilai sendiri kapan harus berhenti.** Kalau sisa sesi cuma akan menghasilkan varian perbaikan
   keempat dari ide yang sama, checkpoint + berhenti jauh lebih berguna daripada commit lagi.
 - File yang otomatis termuat tiap sesi (`AGENTS.md`, file status topik) adalah **biaya tetap** untuk agent berikutnya, bukan arsip. Jaga file status ±100 baris; narasi audit lama dipadatkan dan isi lengkapnya ditunjuk lewat `git show <commit>:<file>`.
@@ -206,5 +213,5 @@ Cara membacanya:
 - Commit besar berisi banyak topik sekaligus.
 - Menambah catatan di `todo.md`.
 - Push ke `origin` atau memaksa push ke branch mana pun.
-- Menyatakan selesai tanpa build + uji di device (untuk perubahan UI).
+- Menyatakan selesai tanpa build + uji di emulator (untuk perubahan UI).
 - Berhenti di tengah pekerjaan multi-step tanpa commit checkpoint — itu memaksa agent berikutnya mencari ulang apa yang sudah diketahui.
