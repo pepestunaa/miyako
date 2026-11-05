@@ -130,8 +130,8 @@ the whole adapter every time.
 "Feels lighter" alone is not a result — one number before, one after, same gesture, report both:
 
 ```sh
-adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai reset   # then do the fling
-adb -s d89608bf shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai | grep -E "Janky frames|Total frames"
+adb -s emulator-5554 shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai reset   # then do the fling
+adb -s emulator-5554 shell dumpsys gfxinfo eu.kanade.tachiyomi.debugYokai | grep -E "Janky frames|Total frames"
 ```
 
 If S1 says "still heavy" and the jank percentage did not move, the per-frame scans were not the cost. The

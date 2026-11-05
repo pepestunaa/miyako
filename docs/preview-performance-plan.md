@@ -256,14 +256,14 @@ Acceptance criteria:
 Gunakan build debug, bukan release:
 
 ```sh
-./gradlew :app:assembleStandardDebug -PdevAbi=arm64-v8a --console=plain -x lint
+./gradlew :app:assembleStandardDebug -PdevAbi=x86_64 --console=plain -x lint
 ```
 
-Install ke device uji:
+Install ke emulator (AVD `miyako-dev`, serial `emulator-5554`):
 
 ```sh
-/c/platform-tools/adb.exe -s d89608bf install -r \
-  app/build/outputs/apk/standard/debug/app-standard-arm64-v8a-debug.apk
+adb -s emulator-5554 install -r \
+  app/build/outputs/apk/standard/debug/app-standard-x86_64-debug.apk
 ```
 
 ### Golden path
@@ -296,8 +296,8 @@ Install ke device uji:
 ### Crash dan regresi
 
 ```sh
-/c/platform-tools/adb.exe -s d89608bf logcat -d | grep -c FATAL
-/c/platform-tools/adb.exe -s d89608bf logcat -d -b crash
+adb -s emulator-5554 logcat -d | grep -c FATAL
+adb -s emulator-5554 logcat -d -b crash
 ```
 
 Hasil yang diharapkan: tidak ada crash dan tidak ada `FATAL`. Regression check wajib

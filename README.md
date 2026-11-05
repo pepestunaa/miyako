@@ -29,8 +29,9 @@ cd miyako
 # Release build (all ABIs, or one ABI with -PdevAbi for faster local builds)
 ./gradlew :app:assembleStandardRelease
 
-# Debug build for development, signed automatically and faster to iterate on
-./gradlew :app:assembleStandardDebug -PdevAbi=arm64-v8a
+# Debug build for development, signed automatically and faster to iterate on.
+# Match the ABI to the target: x86_64 for the emulator AVD, arm64-v8a for a phone.
+./gradlew :app:assembleStandardDebug -PdevAbi=x86_64
 ```
 
 APKs are written to `app/build/outputs/apk/standard/`. Release APKs are unsigned — align and sign
