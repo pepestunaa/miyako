@@ -42,20 +42,18 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
 | 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — never started, see "Step 6" |
 
-## Next action — implement the landing on the dataset side
+## Next action � STOPPED (row 3 reverted)
 
-**Done in row 3.** `rowsFor()` makes the target chapter enter the dataset from `chapter.last_page_read`
-onward in all three insert paths (`onPagesLoaded`, `attachCachedPages`, `rebuildPageGrid`), so nothing
-sits above the row the landing owes; `insertPageItems` re-arms `pendingScrollToCurrent` when the last-read
-row is not in the dataset yet, and `maybeScrollToCurrentPage` lands on it once with
-`scrollToPositionWithOffset(row, 0)`. The `isAboveFirstVisibleRow` gate, rule F2 and the open path are
-unchanged. Pages above the target stay out of the dataset until step 5's compensating insert (accepted).
+Row 3's dataset-side filter (`rowsFor()` dropping pages with `index < last_page_read`) removed the pages
+above the marker from the dataset entirely, so the user could not browse upward to them. The marker row
+did not become the first visible row. Reverted to the pre-row-3 adapter. No second adapter rule added.
 
-The one open question, one line back from the user: **is the last-read page the first visible row?**
+What was learned: dropping pages above the target removes the stacking but also removes content the user
+scrolls back to; the compensating insert (step 5) is a prerequisite for this direction, not a follow-up.
+The landing target is still lost to the insert-above-viewport problem, not row count alone. Reopen only
+after step 5's compensating insert exists, or via a different mechanism.
 
-- Yes → T1 closes; step 4 and the rest of step 5 may start.
-- No → no second adapter rule. Record which row came first and whether the marker row was present at all,
-  then stop.
+Next: resume step 6 (panel scroll weight) or step 5 (compensating insert), at the user's call.
 
 ## Decisions already made — do not reopen
 
