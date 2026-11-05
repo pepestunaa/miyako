@@ -104,6 +104,30 @@ with **no thumbnail rows**, Ch. 2's rows attached (pages 1-9 on screen). It read
 dataset swap returned the viewport to 0", which is what 2j was written against, but G1 failing means that
 reading is not sufficient and the shot may have been taken mid-open. Hypothesis, not fact.
 
+### Both data hypotheses are disproved - do not run them on the phone
+
+Read from the device database on 2026-11-05 (copy of `databases/tachiyomi.db` from
+`run-as eu.kanade.tachiyomi.debugYokai`, not the UI): the library entry is `_id=12`, 854 chapters, and the
+last-read chapter is `_id=851` "Ch. 2 - Magic Knights Entrance Exam" with **`read = 0`,
+`bookmark = 0`, `last_page_read = 13`, `pages_left = 13`** (26 pages; the "page 11" in earlier entries is
+this row, 0-based index 13). `history` newest points at 851 too.
+
+- The `!chapter.read` condition in `refreshCurrentPage()` **is satisfied**, so `currentPage` is not null and
+  the "parks on the header, no marker anywhere" branch does not fire.
+- An unread chapter cannot be dropped by a read filter, so `presenter.chapters` keeps 851 and the
+  `chapterId == null` -> `scrollToPosition(0)` branch does not fire either. Whatever the manga's
+  `chapter_flags = 4097` means, it would have to hide unread non-bookmarked chapters to matter, which the
+  audit already contradicts (Ch. 2 and its rows were visible).
+- The two device observations the previous two sections asked for are therefore **withdrawn**: this was a
+  text question, not a screen question.
+
+What is left is a code question with no phone in it: with a valid target (851, 13), why does the panel not
+land on that row? Prime suspect: `pendingScrollToCurrent` is a **one-shot** and `prewarmPreviewPanel` runs
+1600 ms before the user swipes - the off-screen landing consumes it, and step 2c deleted
+`cancelPendingScroll`, so nothing re-arms it for the real open. Read `scrollToCurrentPage`,
+`maybeScrollToCurrentPage`, `onPagesLoaded` and the prewarm block; answer whether the open's own
+`currentPagePosition()` can be null at that moment. Do not answer it with a device test.
+
 ### A data rule, not a layout rule (raised by the main session, unproven)
 
 `refreshCurrentPage()` sets `currentPage` only when `!chapter.read && chapter.last_page_read > 0`. When the
@@ -177,6 +201,8 @@ page 11. If that row shows the last-read marker, the target was computed and its
 the landing — back to the adapter/gate path. If no row in the panel is marked at all,
 `scrollToCurrentPage` took the `chapterId == null` branch and went to 0 by design, and the fault is
 `refreshCurrentPage` resolving against the filtered chapter list.
+**Withdrawn 2026-11-05**: the database above settles it without the phone, and the answer is the first
+case — the target is computed, so the position is lost after the landing.
 
 ## Step 6, never started: measure the panel scroll
 

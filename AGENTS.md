@@ -119,6 +119,12 @@ tetapi karena screenshot, output gradle, dan dump logcat menumpuk di satu thread
   spesifik, bukan satu sesi uji ulang.
 - Screenshot dibaca maksimal satu per butir, dan hanya kalau laporan user ambigu. Gambar adalah biaya
   konteks termahal di sesi audit.
+- Sebelum minta observasi ke user, cek dulu apakah bukti itu ada dalam bentuk teks: baris database lewat
+  `run-as` + salin DB (app debug boleh), `dumpsys`, config, `git show`. Observasi layar hanya untuk yang
+  memang hanya bisa dilihat di layar. Dua hipotesis landing mati dalam dua perintah teks, setelah dua sesi
+  diminta menatap panel.
+- Kalau user sedang pegang HP, agent tetap boleh bekerja: jawab pertanyaan kode dulu, simpan sebagai
+  hipotesis yang tercatat, baru minta satu observasi yang membedakan hipotesis-hipotesis itu.
 - Kalau user berhalangan: agent boleh mengaudit sendiri dengan batas tegas — build → install → cek
   foreground → maksimal 7 interaksi → selesai, lalu commit checkpoint. Mode ini lambat dan boros; bukan default.
 
