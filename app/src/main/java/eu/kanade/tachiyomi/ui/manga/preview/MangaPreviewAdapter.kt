@@ -50,19 +50,39 @@ class MangaPreviewAdapter(
     var items: List<ChapterItem> = emptyList()
         private set
 
-    var pageGridMode = false
-        private set
+    val previewState = MangaPreviewState()
 
-    var suppressPageLoads = false
+    val pageGridMode: Boolean
+        get() = previewState.pageGridMode
+    var suppressPageLoads: Boolean
+        get() = previewState.suppressPageLoads
+        set(value) { previewState.suppressPageLoads = value }
 
-    private val pageSections = HashMap<Long, ChapterPagesSectionItem>()
-    private val chapterPages = HashMap<Long, List<Page>>()
-    private var currentPage: Pair<Long, Int>? = null
-    private var anchorChapterId: Long? = null
-    private var pendingScrollToCurrent = false
-    private var landingPending = false
-    private var priorityChapterId: Long? = null
+    private val pageSections: HashMap<Long, ChapterPagesSectionItem>
+        get() = previewState.pageSections
 
+    private val chapterPages: HashMap<Long, List<Page>>
+        get() = previewState.chapterPages
+
+    private var currentPage: Pair<Long, Int>?
+        get() = previewState.currentPage
+        set(value) { previewState.currentPage = value }
+
+    private var anchorChapterId: Long?
+        get() = previewState.anchorChapterId
+        set(value) { previewState.anchorChapterId = value }
+
+    private var pendingScrollToCurrent: Boolean
+        get() = previewState.pendingScrollToCurrent
+        set(value) { previewState.pendingScrollToCurrent = value }
+
+    private var landingPending: Boolean
+        get() = previewState.landingPending
+        set(value) { previewState.landingPending = value }
+
+    private var priorityChapterId: Long?
+        get() = previewState.priorityChapterId
+        set(value) { previewState.priorityChapterId = value }
     val delegate: MangaDetailsAdapter.MangaDetailsInterface = controller
     val presenter = controller.presenter
 
@@ -82,11 +102,10 @@ class MangaPreviewAdapter(
     }
 
     fun setPageGridMode(enabled: Boolean) {
-        if (pageGridMode == enabled) return
-        pageGridMode = enabled
+        if (previewState.pageGridMode == enabled) return
+        previewState.pageGridMode = enabled
         rebuildPageGrid()
     }
-
     fun rebuildPageGrid() {
         if (!pageGridMode) {
             performFilter()
@@ -180,7 +199,7 @@ class MangaPreviewAdapter(
         val priority = priorityChapterId
         if (priority != null && section.chapter.id != priority) return
         markPageSectionLoading(section)
-        loadSectionPages(section)
+        previewLoader.load(section)
     }
 
     private fun isAboveFirstVisibleRow(section: ChapterPagesSectionItem): Boolean {
@@ -222,7 +241,7 @@ class MangaPreviewAdapter(
         if (!pageGridMode) return
         resetPageSection(section)
         markPageSectionLoading(section)
-        loadSectionPages(section)
+        previewLoader.load(section)
     }
 
     fun loadVisiblePageSections() {
@@ -321,15 +340,7 @@ class MangaPreviewAdapter(
         else pendingScrollToCurrent = false
     }
 
-    private fun loadSectionPages(section: ChapterPagesSectionItem) {
-        presenter.presenterScope.launch {
-            val pages = presenter.loadPageList(section.chapter)
-            withUIContext {
-                onPagesLoaded(section, pages, attachItems = !isScrolling)
-            }
-        }
-    }
-
+    val previewLoader = MangaPreviewLoader(this)
     val isScrolling: Boolean
         get() = recyclerView?.scrollState != RecyclerView.SCROLL_STATE_IDLE
 

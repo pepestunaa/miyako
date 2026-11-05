@@ -14,9 +14,13 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 - Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
 - Emulator audit: PENDING.
 - Step 2: preview page items, holders, and section classes now live in `ui/manga/preview/chapter/`.
+- Step 3: preview state lives in `MangaPreviewState`.
+- Step 4: page loading lives in `MangaPreviewLoader`.
+- Step 5: preview panel UI and gesture handling live in `MangaPreviewController`.
+- `MangaDetailsAdapter` now owns only the regular chapter list; `MangaPreviewAdapter` owns page-grid state and loading.
 - Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
 - Emulator audit: PENDING.
-- Next: extract preview state and loader responsibilities without changing behavior.
+- Next: run the emulator audit for the preview panel and landing behavior.
 
 ## Resuming here with no prior context
 

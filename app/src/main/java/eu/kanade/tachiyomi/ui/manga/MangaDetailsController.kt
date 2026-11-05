@@ -96,6 +96,7 @@ import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.preview.chapter.ChapterPageItem
 import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewAdapter
+import eu.kanade.tachiyomi.ui.manga.preview.MangaPreviewController
 import eu.kanade.tachiyomi.ui.manga.chapter.ChaptersSortBottomSheet
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
 import eu.kanade.tachiyomi.ui.manga.track.TrackingBottomSheet
@@ -207,7 +208,7 @@ class MangaDetailsController :
         }
     }
 
-    private val manga: Manga? get() = if (presenter.isMangaLateInitInitialized()) presenter.manga else null
+    val manga: Manga? get() = if (presenter.isMangaLateInitInitialized()) presenter.manga else null
     private var colorAnimator: ValueAnimator? = null
     override val presenter: MangaDetailsPresenter
     private var coverColor: Int? = null
@@ -230,14 +231,9 @@ class MangaDetailsController :
     private var tabletAdapter: MangaDetailsAdapter? = null
 
     private var query = ""
-    private var adapter: MangaDetailsAdapter? = null
-    private var previewAdapter: MangaPreviewAdapter? = null
-    private var gridSpanResolver: GridSpanResolver? = null
-    private var previewOpen = false
-    private var swipeAnimating = false
-    private var hintScheduled = false
-    private var hintAnimating = false
-    private var previewWarmed = false
+    var adapter: MangaDetailsAdapter? = null
+    private lateinit var previewController: MangaPreviewController
+    var gridSpanResolver: GridSpanResolver? = null
     private var lastToolbarTitleAlpha: Int? = null
 
     private var actionMode: ActionMode? = null
@@ -497,12 +493,7 @@ class MangaDetailsController :
     override fun onDestroyView(view: View) {
         snack?.dismiss()
         adapter = null
-        previewAdapter = null
-        previewOpen = false
-        swipeAnimating = false
-        hintScheduled = false
-        hintAnimating = false
-        previewWarmed = false
+        if (::previewController.isInitialized) previewController.reset()
         lastToolbarTitleAlpha = null
         gridSpanResolver = null
         finishFloatingActionMode()
@@ -533,9 +524,10 @@ class MangaDetailsController :
         binding.recycler.addItemDecoration(MangaDetailsDivider(view.context))
         binding.recycler.setHasFixedSize(true)
         binding.recycler.setItemViewCacheSize(12)
-        setupPreviewPanel()
-        setupPanelSwipe(binding.recycler, opensPanel = true)
-        setupPanelSwipe(binding.pagesPreviewRecycler, opensPanel = false)
+        previewController = MangaPreviewController(this, binding)
+        previewController.setupPreviewPanel()
+        previewController.setupPanelSwipe(binding.recycler, opensPanel = true)
+        previewController.setupPanelSwipe(binding.pagesPreviewRecycler, opensPanel = false)
         val appbarHeight = activityBinding?.appBar?.attrToolbarHeight ?: 0
         val offset = 10.dpToPx
         binding.swipeRefresh.setDistanceToTriggerSync(70.dpToPx)
@@ -590,54 +582,6 @@ class MangaDetailsController :
         }
     }
 
-    private fun setupPreviewPanel() {
-        val adapter = MangaPreviewAdapter(this).apply {
-            setPageGridMode(true)
-            addListener(
-                object : FlexibleAdapter.OnItemClickListener, FlexibleAdapter.OnItemLongClickListener {
-                    override fun onItemClick(view: View?, position: Int): Boolean {
-                        val item = getItem(position) as? ChapterPageItem ?: return false
-                        openChapter(item.chapter, page = item.page.index)
-                        return false
-                    }
-
-                    override fun onItemLongClick(position: Int) = Unit
-                },
-            )
-            setChapters(presenter.chapters)
-        }
-        previewAdapter = adapter
-        val recycler = binding.pagesPreviewRecycler
-        recycler.adapter = adapter
-        recycler.layoutManager = ChapterLayoutManager(
-            recycler.context,
-            adapter,
-            gridSpanResolver?.spanCount ?: DEFAULT_GRID_SPAN_COUNT,
-        )
-        recycler.setHasFixedSize(true)
-        recycler.itemAnimator = null
-        recycler.addOnScrollListener(
-            object : RecyclerView.OnScrollListener() {
-                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-
-                    if (newState == RecyclerView.SCROLL_STATE_IDLE) adapter.loadVisiblePageSections()
-                }
-
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    // Fill thumbnails as rows enter the viewport during a drag; flings load on IDLE.
-                    if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) {
-                        adapter.loadVisiblePageSections()
-                    }
-                }
-            },
-        )
-    }
-
-    /**
-     * Derive the backdrop offset from the header's actual position instead of accumulating every
-     * scroll delta. App-bar settling and RecyclerView corrections can emit opposing deltas in one
-     * frame; accumulating them made the image stutter when the detail page was dragged back up.
-     */
     private fun updateHeaderParallax() {
         if (isTablet) return
         val recycler = binding.recycler
@@ -648,342 +592,6 @@ class MangaDetailsController :
         if (abs(backdrop.translationY - translation) > 0.5f) {
             backdrop.translationY = translation
         }
-    }
-
-    private fun setupPanelSwipe(recycler: RecyclerView, opensPanel: Boolean) {
-        val touchSlop = ViewConfiguration.get(recycler.context).scaledTouchSlop
-        val velocityTracker = VelocityTracker.obtain()
-        var downRawX = 0f
-        var downRawY = 0f
-        var lastRawX = 0f
-        var lastRawY = 0f
-        var dragging = false
-        var blockSwipe = false
-        var dragStartTranslation = 0f
-        var dragWidth = 1f
-        // Another touch listener can hold the start of a gesture (a row snapping back, for
-        // example) and then this listener never sees its DOWN, so the first move re-anchors.
-        var anchored = false
-
-        fun panelAvailable(): Boolean = if (opensPanel) !previewOpen else previewOpen
-
-        fun anchor(e: MotionEvent) {
-            if (hintAnimating) {
-                hintAnimating = false
-                previewAdapter?.suppressPageLoads = false
-                binding.pagesPreviewRecycler.animate().cancel()
-                if (!previewOpen) {
-                    binding.pagesPreviewRecycler.visibility = View.GONE
-                    binding.pagesPreviewRecycler.translationX = 0f
-                }
-            }
-            downRawX = e.rawX
-            downRawY = e.rawY
-            lastRawX = e.rawX
-            lastRawY = e.rawY
-            dragging = false
-            blockSwipe = opensPanel && startsOnSwipeableChapter(recycler, e)
-            velocityTracker.clear()
-            velocityTracker.addMovement(e)
-            anchored = true
-        }
-
-        fun moveDrag(e: MotionEvent) {
-            val dx = e.rawX - downRawX
-            binding.pagesPreviewRecycler.translationX =
-                (dragStartTranslation + dx).coerceIn(0f, dragWidth)
-            updatePreviewScrimAlpha()
-        }
-
-        fun beginDrag(e: MotionEvent): Boolean {
-            if (opensPanel) {
-                val width = binding.recycler.width
-                if (width <= 0) return false
-                // The panel stays GONE while closed, so show it already parked off-screen right.
-                binding.pagesPreviewRecycler.visibility = View.VISIBLE
-                showPreviewScrims()
-                dragStartTranslation = width.toFloat()
-                dragWidth = width.toFloat()
-            } else {
-                dragStartTranslation = 0f
-                dragWidth = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
-            }
-            binding.pagesPreviewRecycler.translationX = dragStartTranslation
-            moveDrag(e)
-            return true
-        }
-
-        fun settleDrag(velocityX: Float = 0f) {
-            val translation = binding.pagesPreviewRecycler.translationX
-            val complete = if (opensPanel) {
-                translation < dragWidth - dragWidth * PANEL_SWIPE_THRESHOLD ||
-                    velocityX < -PANEL_FLING_VELOCITY
-            } else {
-                translation > dragWidth * PANEL_SWIPE_THRESHOLD ||
-                    velocityX > PANEL_FLING_VELOCITY
-            }
-            val opened = complete == opensPanel
-            animatePreviewPanel(if (opened) 0f else dragWidth) {
-                if (opened) onPreviewOpened() else onPreviewClosed()
-            }
-        }
-
-        fun finishDrag() {
-            velocityTracker.computeCurrentVelocity(1000)
-            settleDrag(velocityTracker.xVelocity)
-        }
-
-        fun cancelDrag() {
-            // RecyclerView can cancel a horizontal drag when another touch participant wins
-            // the gesture. Keep the panel's current progress as the source of truth instead of
-            // always snapping back; otherwise a mostly completed swipe flashes in and closes.
-            settleDrag()
-        }
-
-        recycler.addOnItemTouchListener(
-            object : RecyclerView.SimpleOnItemTouchListener() {
-                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                    if (swipeAnimating) return false
-                    when (e.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> anchor(e)
-                        MotionEvent.ACTION_MOVE -> {
-                            if (!anchored) {
-                                anchor(e)
-                                return false
-                            }
-                            velocityTracker.addMovement(e)
-                            val dx = e.rawX - downRawX
-                            val dy = e.rawY - downRawY
-                            // Judge by the latest movement too: a stale anchor must not turn a
-                            // vertical drag into a panel swipe.
-                            val stepX = e.rawX - lastRawX
-                            val stepY = e.rawY - lastRawY
-                            if (!dragging &&
-                                !blockSwipe &&
-                                !isTablet &&
-                                manga?.isLocal() != true &&
-                                panelAvailable() &&
-                                (if (opensPanel) dx < 0f else dx > 0f) &&
-                                abs(dx) > touchSlop &&
-                                abs(dx) > abs(dy) * 1.25f &&
-                                abs(stepX) > abs(stepY) * 1.25f
-                            ) {
-                                dragging = beginDrag(e)
-                            } else if (dragging) {
-                                moveDrag(e)
-                            }
-                            lastRawX = e.rawX
-                            lastRawY = e.rawY
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            dragging = false
-                            anchored = false
-                        }
-                    }
-                    // Intercepting cancels the child press so a swipe doesn't also click the row/button under it.
-                    return dragging
-                }
-
-                override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                    when (e.actionMasked) {
-                        MotionEvent.ACTION_MOVE -> {
-                            if (swipeAnimating) return
-                            if (!anchored) {
-                                anchor(e)
-                                return
-                            }
-                            velocityTracker.addMovement(e)
-                            if (dragging) moveDrag(e)
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            if (dragging) finishDrag()
-                            dragging = false
-                            anchored = false
-                        }
-                        MotionEvent.ACTION_CANCEL -> {
-                            if (dragging) cancelDrag()
-                            dragging = false
-                            anchored = false
-                        }
-                    }
-                }
-            },
-        )
-    }
-
-    private fun scheduleSwipeHint() {
-        if (hintScheduled || isTablet) return
-        val mangaId = manga?.id ?: return
-        if (presenter.preferences.hasShownDetailSwipeHint(mangaId)) return
-        val view = view ?: return
-        // Chapters load asynchronously; stay unarmed until the preview grid has content,
-        // otherwise a slow manga would consume the one scheduled hint and never show it.
-        if ((previewAdapter?.itemCount ?: 0) == 0) return
-        hintScheduled = true
-        view.postDelayed({ showSwipeHint() }, PANEL_HINT_DELAY_MS)
-    }
-
-    private fun prewarmPreviewPanel() {
-        if (previewWarmed || isTablet) return
-        val view = view ?: return
-        if ((previewAdapter?.itemCount ?: 0) == 0) return
-        // Warm off-screen once (after the hint) so the first swipe only translates a grid
-        // that is already laid out and anchored instead of inflating it mid-drag.
-        view.postDelayed({
-            val adapter = previewAdapter ?: return@postDelayed
-            val panel = binding.pagesPreviewRecycler
-            if (previewWarmed || previewOpen || hintAnimating || swipeAnimating) return@postDelayed
-            if (panel.visibility == View.VISIBLE) return@postDelayed
-            val width = binding.recycler.width.toFloat()
-            if (width <= 0f) return@postDelayed
-            previewWarmed = true
-            panel.translationX = width
-            panel.visibility = View.VISIBLE
-            panel.post {
-                adapter.loadVisiblePageSections()
-                panel.postDelayed({
-                    if (!previewOpen && !hintAnimating && !swipeAnimating &&
-                        panel.translationX >= width
-                    ) {
-                        panel.visibility = View.GONE
-                    }
-                }, PANEL_WARM_SETTLE_MS)
-            }
-        }, PANEL_WARM_DELAY_MS)
-    }
-
-    private fun showSwipeHint() {
-        if (view == null) return
-        val manga = manga ?: return
-        val mangaId = manga.id ?: return
-        if (presenter.preferences.hasShownDetailSwipeHint(mangaId)) return
-        if (isTablet || manga.isLocal() || previewOpen || swipeAnimating || hintAnimating) return
-        val panel = binding.pagesPreviewRecycler
-        if (panel.visibility != View.GONE) return
-        val adapter = previewAdapter ?: return
-        val width = binding.recycler.width.toFloat()
-        if (width <= 0f || adapter.itemCount == 0) return
-        presenter.preferences.markDetailSwipeHintShown(mangaId)
-        // Nudge the right-docked panel into view and back so the swipe affordance is obvious.
-        hintAnimating = true
-        adapter.suppressPageLoads = true
-        panel.visibility = View.VISIBLE
-        panel.translationX = width
-        panel.animate().cancel()
-        panel.animate()
-            .translationX(width * (1f - PANEL_HINT_PEEK))
-            .setDuration(PANEL_HINT_IN_MS)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                if (!hintAnimating || previewOpen) return@withEndAction
-                panel.animate()
-                    .translationX(width)
-                    .setStartDelay(PANEL_HINT_HOLD_MS)
-                    .setDuration(PANEL_HINT_OUT_MS)
-                    .setInterpolator(AccelerateInterpolator())
-                    .withEndAction {
-                        hintAnimating = false
-                        adapter.suppressPageLoads = false
-                        if (!previewOpen) panel.visibility = View.GONE
-                    }
-                    .start()
-            }
-            .start()
-    }
-
-    private fun animatePreviewPanel(target: Float, onEnd: () -> Unit) {
-        val panel = binding.pagesPreviewRecycler
-        swipeAnimating = true
-        val width = binding.recycler.width.toFloat().coerceAtLeast(1f)
-        val distance = abs(target - panel.translationX)
-        val duration = (PANEL_ANIM_MS * (distance / width))
-            .roundToLong()
-            .coerceIn(PANEL_ANIM_MIN_MS, PANEL_ANIM_MS)
-        panel.animate().cancel()
-        panel.animate()
-            .translationX(target)
-            .setDuration(duration)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                swipeAnimating = false
-                onEnd()
-            }
-            .start()
-        animatePreviewScrimAlpha(1f - (target / width).coerceIn(0f, 1f), duration)
-    }
-
-    private fun showPreviewScrims() {
-        binding.pagesPreviewScrimTop.apply {
-            visibility = View.VISIBLE
-            alpha = 0f
-        }
-        binding.pagesPreviewScrimBottom.apply {
-            visibility = View.VISIBLE
-            alpha = 0f
-        }
-    }
-
-    private fun updatePreviewScrimAlpha() {
-        if (binding.pagesPreviewScrimTop.visibility != View.VISIBLE) return
-        val width = binding.pagesPreviewRecycler.width.toFloat().coerceAtLeast(1f)
-        val alpha = 1f - (binding.pagesPreviewRecycler.translationX / width).coerceIn(0f, 1f)
-        binding.pagesPreviewScrimTop.alpha = alpha
-        binding.pagesPreviewScrimBottom.alpha = alpha
-    }
-
-    private fun animatePreviewScrimAlpha(alpha: Float, duration: Long) {
-        if (binding.pagesPreviewScrimTop.visibility != View.VISIBLE) return
-        binding.pagesPreviewScrimTop.animate().cancel()
-        binding.pagesPreviewScrimBottom.animate().cancel()
-        binding.pagesPreviewScrimTop.animate().alpha(alpha).setDuration(duration).start()
-        binding.pagesPreviewScrimBottom.animate().alpha(alpha).setDuration(duration).start()
-    }
-
-    private fun hidePreviewScrims() {
-        binding.pagesPreviewScrimTop.animate().cancel()
-        binding.pagesPreviewScrimBottom.animate().cancel()
-        binding.pagesPreviewScrimTop.visibility = View.GONE
-        binding.pagesPreviewScrimBottom.visibility = View.GONE
-    }
-
-    private fun onPreviewOpened() {
-        previewOpen = true
-        manga?.id?.let { presenter.preferences.markDetailSwipeHintShown(it) }
-        binding.pagesPreviewScrimTop.apply {
-            visibility = View.VISIBLE
-            alpha = 1f
-        }
-        binding.pagesPreviewScrimBottom.apply {
-            visibility = View.VISIBLE
-            alpha = 1f
-        }
-        binding.fab.hide()
-        binding.scrollToTop.hide()
-        binding.fastScroller.isVisible = false
-        binding.swipeRefresh.isEnabled = false
-    }
-
-    private fun onPreviewClosed() {
-        previewOpen = false
-
-
-        binding.pagesPreviewRecycler.visibility = View.GONE
-        hidePreviewScrims()
-        binding.swipeRefresh.isEnabled = true
-        binding.fastScroller.isVisible = true
-        updateFab()
-        if (binding.fab.isEnabled) updateFabVisibility()
-        updateScrollToTopVisibility()
-    }
-
-    private fun startsOnSwipeableChapter(recycler: RecyclerView, event: MotionEvent): Boolean {
-        // Chapter rows already handle horizontal swipes (bookmark/read), so leave those to the helper.
-        // Rows that can't be swiped don't block the panel swipe, otherwise the gesture would be dead.
-        val adapter = adapter ?: return false
-        val child = recycler.findChildViewUnder(event.x, event.y) ?: return false
-        val position = recycler.getChildAdapterPosition(child)
-        if (position == RecyclerView.NO_POSITION) return false
-        return (adapter.getItem(position) as? ChapterItem)?.isSwipeable() == true
     }
 
     private class ChapterSwipeCallback(
@@ -1199,7 +807,7 @@ class MangaDetailsController :
             binding.recycler.itemAnimator = null
             tabletAdapter?.notifyItemChanged(0)
             adapter?.setChapters(chapters)
-            previewAdapter?.setChapters(chapters)
+            previewController.previewAdapter?.setChapters(chapters)
             addMangaHeader()
             updateFab()
             binding.recycler.itemAnimator = itemAnimator
@@ -1254,13 +862,13 @@ class MangaDetailsController :
     }
 
     override fun handleBack(): Boolean {
-        if (previewOpen || binding.pagesPreviewRecycler.visibility == View.VISIBLE) {
-            hintAnimating = false
-            previewAdapter?.suppressPageLoads = false
+        if (previewController.previewOpen || binding.pagesPreviewRecycler.visibility == View.VISIBLE) {
+            previewController.hintAnimating = false
+            previewController.previewAdapter?.suppressPageLoads = false
             binding.pagesPreviewRecycler.animate().cancel()
-            swipeAnimating = false
+            previewController.swipeAnimating = false
             binding.pagesPreviewRecycler.translationX = binding.pagesPreviewRecycler.width.toFloat()
-            onPreviewClosed()
+            previewController.onPreviewClosed()
             return true
         }
         return super.handleBack()
@@ -1354,7 +962,7 @@ class MangaDetailsController :
     fun updateHeader() {
         binding.swipeRefresh.isRefreshing = presenter.isLoading
         adapter?.setChapters(presenter.chapters)
-        previewAdapter?.setChapters(presenter.chapters)
+        previewController.previewAdapter?.setChapters(presenter.chapters)
         tabletAdapter?.notifyItemChanged(0)
         addMangaHeader()
         updateMenuVisibility(activityBinding?.toolbar?.menu)
@@ -1377,7 +985,7 @@ class MangaDetailsController :
         }
     }
 
-    private fun updateFabVisibility() {
+    fun updateFabVisibility() {
         val headerBinding = getHeader()?.binding
         if (headerBinding == null) {
             if (binding.fab.isEnabled) {
@@ -1402,8 +1010,8 @@ class MangaDetailsController :
         }
     }
 
-    private fun updateScrollToTopVisibility() {
-        if (isTablet || previewOpen || !isBindingInitialized) {
+    fun updateScrollToTopVisibility() {
+        if (isTablet || previewController.previewOpen || !isBindingInitialized) {
             binding.scrollToTop.hide()
             return
         }
@@ -1434,13 +1042,13 @@ class MangaDetailsController :
         binding.swipeRefresh.isRefreshing = presenter.isLoading
         tabletAdapter?.notifyItemChanged(0)
         adapter?.setChapters(presenter.chapters)
-        previewAdapter?.setChapters(presenter.chapters)
+        previewController.previewAdapter?.setChapters(presenter.chapters)
         addMangaHeader()
         updateFab()
         colorToolbar(binding.recycler.canScrollVertically(-1))
         updateMenuVisibility(activityBinding?.toolbar?.menu)
-        scheduleSwipeHint()
-        prewarmPreviewPanel()
+        previewController.scheduleSwipeHint()
+        previewController.prewarmPreviewPanel()
     }
 
     private fun addMangaHeader() {
@@ -1663,7 +1271,7 @@ class MangaDetailsController :
         presenter.markChaptersRead(chapters, false)
     }
 
-    private fun openChapter(chapter: Chapter, sharedElement: View? = null, page: Int? = null) {
+    fun openChapter(chapter: Chapter, sharedElement: View? = null, page: Int? = null) {
         (activity as? AppCompatActivity)?.apply {
             if (sharedElement != null) {
                 val (intent, bundle) = ReaderActivity
@@ -1728,8 +1336,8 @@ class MangaDetailsController :
 
             adapter?.setFilter(query)
             adapter?.performFilter()
-            previewAdapter?.setFilter(query)
-            previewAdapter?.performFilter()
+            previewController.previewAdapter?.setFilter(query)
+            previewController.previewAdapter?.performFilter()
             true
         }
     }
@@ -2486,25 +2094,25 @@ class MangaDetailsController :
 
         const val FROM_CATALOGUE_EXTRA = "from_catalogue"
 
-        private const val DEFAULT_GRID_SPAN_COUNT = 3
+        internal const val DEFAULT_GRID_SPAN_COUNT = 3
         private const val HEADER_PARALLAX_FACTOR = 0.25f
 
         // Magnet thresholds: even a short swipe or light flick completes, so a missed swipe
         // never has to be repeated.
-        private const val PANEL_SWIPE_THRESHOLD = 0.05f
-        private const val PANEL_FLING_VELOCITY = 220f
-        private const val PANEL_ANIM_MS = 240L
-        private const val PANEL_ANIM_MIN_MS = 100L
+        internal const val PANEL_SWIPE_THRESHOLD = 0.05f
+        internal const val PANEL_FLING_VELOCITY = 220f
+        internal const val PANEL_ANIM_MS = 240L
+        internal const val PANEL_ANIM_MIN_MS = 100L
 
         private const val SCROLL_TO_TOP_JUMP_THRESHOLD = 30
 
-        private const val PANEL_HINT_DELAY_MS = 700L
-        private const val PANEL_WARM_DELAY_MS = 1600L
-        private const val PANEL_WARM_SETTLE_MS = 500L
-        private const val PANEL_HINT_PEEK = 0.18f
-        private const val PANEL_HINT_IN_MS = 320L
-        private const val PANEL_HINT_HOLD_MS = 180L
-        private const val PANEL_HINT_OUT_MS = 260L
+        internal const val PANEL_HINT_DELAY_MS = 700L
+        internal const val PANEL_WARM_DELAY_MS = 1600L
+        internal const val PANEL_WARM_SETTLE_MS = 500L
+        internal const val PANEL_HINT_PEEK = 0.18f
+        internal const val PANEL_HINT_IN_MS = 320L
+        internal const val PANEL_HINT_HOLD_MS = 180L
+        internal const val PANEL_HINT_OUT_MS = 260L
 
         private enum class RangeMode {
             Download,
