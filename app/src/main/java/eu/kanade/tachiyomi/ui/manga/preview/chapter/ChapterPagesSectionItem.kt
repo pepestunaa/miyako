@@ -17,6 +17,14 @@ class ChapterPagesSectionItem(var chapter: Chapter) : AbstractFlexibleItem<Chapt
     var pageCount: Int = 0
     var pagesAttached: Boolean = false
 
+    // Only a window of a chapter is attached to the grid at a time; the rest stays as metadata in
+    // the adapter. Without this a long chapter builds every row before the last-read page first.
+    var attachedStart: Int = 0
+    var attachedCount: Int = 0
+
+    val attachedEnd: Int
+        get() = if (attachedCount == 0) -1 else attachedStart + attachedCount - 1
+
     private var boundHolder: ChapterPagesSectionHolder? = null
 
     fun refreshBoundHolder() {

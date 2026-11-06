@@ -17,10 +17,12 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 - Step 3: preview state lives in `MangaPreviewState`.
 - Step 4: page loading lives in `MangaPreviewLoader`.
 - Step 5: preview panel UI and gesture handling live in `MangaPreviewController`.
+- Step 6: a chapter attaches only a window of page rows around the last-read page instead of the whole
+  chapter; the window grows on scroll, and every panel open re-anchors to the marker.
 - `MangaDetailsAdapter` now owns only the regular chapter list; `MangaPreviewAdapter` owns page-grid state and loading.
 - Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
 - Emulator audit: PENDING.
-- Next: run the emulator audit for the preview panel and landing behavior.
+- Next: install the debug APK and audit first open, reopen, upward/downward fling, reader navigation, and clean logcat.
 
 ## Resuming here with no prior context
 
@@ -54,17 +56,19 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 | 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS; the capture itself was wrong, reverted by 2j |
 | 2j | a grid rebuild always re-applies the target landing (rule F2, chosen by the user) | `5b0e9e0401` | ok | FAIL (user, 2026-11-05) — G1 FAIL, G2 not run. Topic stopped here |
 | 3 | target chapter enters first, cached rows cannot push the initial landing | this commit | ok | PENDING — emulator audit required |
+| 3b | attach a page window around the marker; re-anchor on every open | this commit | ok | PENDING — emulator audit required |
 | 4 | disable-then-measure the priority loader chain | — | — | sequenced after T1, see Decisions |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
 | 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — never started, see "Step 6" |
 
 ## Next action
 
-Step 3 now builds the initial grid with the target chapter's cached pages only. Other cached chapters remain
-header-only until the target landing has completed, while page lists for non-target chapters remain lazy.
-The controller no longer issues a second landing during swipe begin or panel prewarm.
+Step 3 now builds the initial grid with the target chapter's cached pages only, and step 3b attaches a
+window around the marker instead of every page before it. Every panel open calls `scrollToCurrentPage()`.
+The window grows by 24 rows when the user reaches an edge; upward growth waits for drag/idle because the
+anchor correction cancels a fling.
 
-Next: install the debug APK and audit first open, reopen, upward/downward scrolling, reader navigation, and
+Next: install the debug APK and audit first open, reopen, upward/downward fling, reader navigation, and
 clean logcat. If landing passes, continue with step 4 as a separate measurement commit.
 
 ## Decisions already made — do not reopen
@@ -83,6 +87,11 @@ clean logcat. If landing passes, continue with step 4 as a separate measurement 
   position is defined by the data, not by the children a dataset swap scraps. Do not reintroduce a
   preserve-the-viewport rebuild without asking. Chosen knowing the cost; G2, the test for that cost, was
   never run.
+- **Step 3b (2026-11-06): the landing no longer depends on every page above the marker being attached.**
+  A chapter attaches `PAGE_WINDOW_LEAD` rows before and `PAGE_WINDOW_TRAIL` rows after the marker, then
+  grows on scroll. This is the direct fix for "still stacked with the earlier pages of that chapter":
+  the old path inserted the whole page list, so the marker position was buried behind rows the user never
+  asked to see yet. Do not widen the initial window back to the full chapter without an audit result.
 - The landing is **a loading rule, not a glide machine**: no anchor state, no `viewportMove`-style flags,
   no timers, no `postDelayed` chains, no re-animation of the open.
 - **Step 4 (measure the priority chain) is out of the current work order** — not cancelled, sequenced
@@ -98,7 +107,8 @@ clean logcat. If landing passes, continue with step 4 as a separate measurement 
 - **T1 — the preview does not open on the last-read page (OPEN, stopped by the user 2026-11-05).** Every
   landing verdict failed: T1, B1, D1, E1, G1. The user's own words: "BIG FAIL every time", "still stacked
   with the earlier pages of that chapter". Lazy attach and the regression items passed (T3, B2, B3, D2,
-  E2), so the panel's data is fine and its position is not.
+  E2), so the panel's data is fine and its position is not. Step 3b targets the "stacked" shape directly
+  (page rows are windowed around the marker) and re-anchors on every open; **not verified yet**.
 - **scrolling the panel feels heavy (open, never started).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — O(children x items) per frame with 854+ sections.
