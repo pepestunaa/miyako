@@ -113,6 +113,10 @@ Script terpisah tetap tersedia bila hanya membutuhkan satu langkah:
 
 `start.ps1` aman dijalankan ketika emulator sudah aktif karena hanya menunggu emulator siap.
 
+Zed juga menyediakan task project di `.zed/tasks.json`. Buka command palette, pilih `task: spawn`,
+lalu pilih task Miyako yang diinginkan. Task `Miyako: Build, Install, and Launch` menjalankan workflow
+utama yang sama seperti `build.ps1`; task lainnya menjalankan script terpisah.
+
 ## Audit E2E
 
 Setiap perubahan fitur/UI wajib melewati audit end-to-end di emulator sebelum dilaporkan selesai. Urutannya:
