@@ -90,6 +90,29 @@ app/build/outputs/apk/standard/debug/app-standard-x86_64-debug.apk
 - Jangan menambah `Log.d` untuk mengaudit: diagnostik preview sudah dibuang dan audit dibaca dari perilaku
   di layar plus `FATAL` / buffer crash, bukan dari tag log.
 
+### Workflow PowerShell
+
+Gunakan script di root project untuk development tanpa Android Studio:
+
+```powershell
+.\build.ps1
+```
+
+`build.ps1` otomatis menjalankan `start.ps1` terlebih dahulu. Jika emulator `miyako-dev` belum aktif,
+script akan menyalakannya dan menunggu sampai boot selesai. Setelah itu script melakukan build debug,
+install APK, lalu membuka aplikasi Miyako.
+
+Script terpisah tetap tersedia bila hanya membutuhkan satu langkah:
+
+```powershell
+.\start.ps1
+.\install.ps1
+.\launch.ps1
+.\stop.ps1
+```
+
+`start.ps1` aman dijalankan ketika emulator sudah aktif karena hanya menunggu emulator siap.
+
 ## Audit E2E
 
 Setiap perubahan fitur/UI wajib melewati audit end-to-end di emulator sebelum dilaporkan selesai. Urutannya:
