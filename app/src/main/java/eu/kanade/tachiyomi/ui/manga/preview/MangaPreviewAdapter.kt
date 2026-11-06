@@ -68,21 +68,6 @@ class MangaPreviewAdapter(
         get() = previewState.currentPage
         set(value) { previewState.currentPage = value }
 
-    private var anchorChapterId: Long?
-        get() = previewState.anchorChapterId
-        set(value) { previewState.anchorChapterId = value }
-
-    private var pendingScrollToCurrent: Boolean
-        get() = previewState.pendingScrollToCurrent
-        set(value) { previewState.pendingScrollToCurrent = value }
-
-    private var landingPending: Boolean
-        get() = previewState.landingPending
-        set(value) { previewState.landingPending = value }
-
-    private var priorityChapterId: Long?
-        get() = previewState.priorityChapterId
-        set(value) { previewState.priorityChapterId = value }
     val delegate: MangaDetailsAdapter.MangaDetailsInterface = controller
     val presenter = controller.presenter
 
@@ -112,11 +97,6 @@ class MangaPreviewAdapter(
             return
         }
         refreshCurrentPage()
-        val landingChapterId = currentPage?.first ?: anchorChapterId
-        landingPending = landingChapterId != null
-        if (landingPending) {
-            pendingScrollToCurrent = true
-        }
         val gridItems = mutableListOf<IFlexible<*>>()
         for (chapterItem in filteredItems()) {
             val chapter = chapterItem.chapter
@@ -134,28 +114,20 @@ class MangaPreviewAdapter(
             }
             gridItems.add(section)
             val pages = chapterPages[chapterId]
-            // During the initial landing, only the target chapter may contribute cached rows. Other
-            // cached chapters must stay header-only until the target is settled, or they can push it
-            // down while the adapter is still building the first viewport.
-            val mayAttachCachedPages = if (landingPending) {
-                chapterId == landingChapterId
-            } else {
-                section.pagesAttached || !pageAttachIsHeldBack(section)
-            }
-            if (pages != null && mayAttachCachedPages) {
+            if (pages != null && (section.pagesAttached || !pageAttachIsHeldBack(section))) {
                 if (pages.isEmpty()) {
                     section.pagesAttached = true
                     section.attachedStart = 0
                     section.attachedCount = 0
                 } else {
-                    // A rebuild may keep the window the user had already scrolled into, except during
-                    // landing where the last-read page defines the window again.
-                    val stored = if (!landingPending && section.pagesAttached && section.attachedCount > 0) {
+                    // A rebuild keeps the rows the user had already scrolled into instead of
+                    // resetting every chapter back to its first page.
+                    val stored = if (section.pagesAttached && section.attachedCount > 0) {
                         section.attachedStart until (section.attachedStart + section.attachedCount)
                     } else {
                         null
                     }
-                    val window = stored ?: initialWindow(chapterId, pages.size)
+                    val window = stored ?: initialWindow(pages.size)
                     section.attachedStart = window.first
                     section.attachedCount = window.last - window.first + 1
                     section.pagesAttached = true
@@ -167,17 +139,6 @@ class MangaPreviewAdapter(
             }
         }
         updateItems(gridItems)
-        // A dataset swap scraps every child, so a rebuild cannot keep the panel where it was. In grid mode
-        // the position is defined by the last-read page, so that is where a rebuild puts it.
-        scrollToCurrentPage()
-    }
-
-    private fun completeLandingAfterLayout() {
-        val recycler = recyclerView ?: return
-        recycler.doOnNextLayout {
-            landingPending = false
-            pendingScrollToCurrent = false
-        }
     }
 
     private fun updateItems(items: List<IFlexible<*>>) {
@@ -213,10 +174,6 @@ class MangaPreviewAdapter(
         // nothing loading until a drag. `attachCachedPages` holds the rows themselves back.
         attachCachedPages(section)
         if (!pageSectionShouldLoad(section)) return
-        // Hold back other chapters while the last-read one is still fetching: the panel anchors
-        // there, and its thumbnails are the first the user actually sees.
-        val priority = priorityChapterId
-        if (priority != null && section.chapter.id != priority) return
         markPageSectionLoading(section)
         previewLoader.load(section)
     }
@@ -242,17 +199,9 @@ class MangaPreviewAdapter(
 
     /**
      * The single rule for every place that puts page rows into the dataset: rows going in above the
-     * panel's top row are not compensated, so they shove whatever the user is looking at down. The
-     * exception is the chapter the landing still owes the viewport: holding its rows back is what
-     * leaves the panel parked on an empty header.
+     * panel's top row are not compensated, so they shove whatever the user is looking at down.
      */
     private fun pageAttachIsHeldBack(section: ChapterPagesSectionItem): Boolean {
-        val chapterId = section.chapter.id ?: return false
-        if (landingPending &&
-            (chapterId == currentPage?.first || chapterId == anchorChapterId || chapterId == priorityChapterId)
-        ) {
-            return false
-        }
         return isAboveFirstVisibleRow(section)
     }
 
@@ -335,84 +284,6 @@ class MangaPreviewAdapter(
         }
     }
 
-    fun scrollToCurrentPage() {
-        if (!pageGridMode) return
-        val recycler = recyclerView ?: return
-        refreshCurrentPage()
-        // A chapter without a page marker still sits somewhere in the grid: a finished chapter,
-        // or one left at page 0, has to open on itself instead of at the very top of the list.
-        val chapterId = currentPage?.first ?: anchorChapterId
-        if (chapterId == null) {
-            // History may still be loading: keep waiting so a later refresh can anchor.
-            priorityChapterId = null
-            pendingScrollToCurrent = !presenter.historyLoaded
-            if (presenter.historyLoaded) recycler.scrollToPosition(0)
-            return
-        }
-        // Fetch the last-read chapter's page list before any other section gets a chance.
-        priorityChapterId = if (chapterPages.containsKey(chapterId)) null else chapterId
-
-        val pagePosition = currentPagePosition()
-        if (pagePosition != null) {
-            anchorToCurrentPage(pagePosition)
-            if (landingPending) completeLandingAfterLayout()
-            else pendingScrollToCurrent = false
-            return
-        }
-        // The current chapter's thumbnails may not be loaded yet: park on its section and
-        // jump to the page itself once they attach. A finished chapter is already the
-        // destination, so only a marker history has not delivered yet is worth waiting for.
-        pendingScrollToCurrent = currentPage != null || !presenter.historyLoaded
-        val sectionPosition = sectionPositionOf(chapterId)
-        val section = sectionPosition?.let { getItem(it) as? ChapterPagesSectionItem }
-        if (sectionPosition == null || section == null) {
-            priorityChapterId = null
-            return
-        }
-        scrollToRowAtTop(recycler, sectionPosition)
-        if (currentPage == null && landingPending) completeLandingAfterLayout()
-        loadVisiblePageSections()
-    }
-
-
-    private fun anchorToCurrentPage(position: Int) {
-        val recycler = recyclerView ?: return
-        scrollToRowAtTop(recycler, position)
-    }
-
-    private fun scrollToRowAtTop(recycler: RecyclerView, position: Int) {
-        val layoutManager = recycler.layoutManager as? LinearLayoutManager
-        if (layoutManager != null) {
-            layoutManager.scrollToPositionWithOffset(position, 0)
-        } else {
-            recycler.scrollToPosition(position)
-        }
-    }
-
-    private fun currentPagePosition(): Int? {
-        for (i in 0 until itemCount) {
-            val item = getItem(i) as? ChapterPageItem ?: continue
-            if (item.isCurrentPage) return i
-        }
-        return null
-    }
-
-    private fun sectionPositionOf(chapterId: Long): Int? {
-        for (i in 0 until itemCount) {
-            val item = getItem(i) as? ChapterPagesSectionItem ?: continue
-            if (item.chapter.id == chapterId) return i
-        }
-        return null
-    }
-
-    private fun maybeScrollToCurrentPage(chapterId: Long) {
-        if (!pendingScrollToCurrent || currentPage?.first != chapterId) return
-        val position = currentPagePosition() ?: return
-        anchorToCurrentPage(position)
-        if (landingPending) completeLandingAfterLayout()
-        else pendingScrollToCurrent = false
-    }
-
     val previewLoader = MangaPreviewLoader(this)
     val isScrolling: Boolean
         get() = recyclerView?.scrollState != RecyclerView.SCROLL_STATE_IDLE
@@ -427,10 +298,6 @@ class MangaPreviewAdapter(
     ) {
         val chapterId = section.chapter.id ?: return
         if (pages == null) {
-            if (chapterId == priorityChapterId) {
-                priorityChapterId = null
-                loadVisiblePageSections()
-            }
             section.state = ChapterPagesSectionItem.State.Error
             section.refreshBoundHolder()
             return
@@ -450,8 +317,7 @@ class MangaPreviewAdapter(
                 section.attachedCount = 0
             }
             attachItems && !pageAttachIsHeldBack(section) -> {
-                insertPageItems(section, sectionPosition, pages, initialWindow(chapterId, pages.size))
-                maybeScrollToCurrentPage(chapterId)
+                insertPageItems(section, sectionPosition, pages, initialWindow(pages.size))
             }
             // Held back while scrolling, or because the list was fetched while its section was above
             // the viewport: inserting it now would only push the content the user is looking at down.
@@ -461,10 +327,6 @@ class MangaPreviewAdapter(
             }
         }
         section.refreshBoundHolder()
-        if (chapterId == priorityChapterId) {
-            priorityChapterId = null
-            loadVisiblePageSections()
-        }
     }
 
     fun attachCachedPages(section: ChapterPagesSectionItem) {
@@ -487,8 +349,7 @@ class MangaPreviewAdapter(
         }
         val sectionPosition = getGlobalPositionOf(section)
         if (sectionPosition != -1) {
-            insertPageItems(section, sectionPosition, pages, initialWindow(chapterId, pages.size))
-            maybeScrollToCurrentPage(chapterId)
+            insertPageItems(section, sectionPosition, pages, initialWindow(pages.size))
         }
     }
 
@@ -554,23 +415,13 @@ class MangaPreviewAdapter(
     }
 
     /**
-     * A chapter attaches a window around the last-read page instead of every page. A long chapter
-     * would otherwise build all rows before the marker first, which pushes the marker far down the
-     * dataset and makes landing depend on how many pages happen to sit above it.
+     * A chapter attaches a window of rows starting at its first page and grows it as the user
+     * scrolls. The panel never jumps to the last-read page, and a long chapter never builds every
+     * row before the user has scrolled.
      */
-    private fun initialWindow(chapterId: Long, pageCount: Int): IntRange {
+    private fun initialWindow(pageCount: Int): IntRange {
         if (pageCount <= 0) return IntRange.EMPTY
-        val marker = currentPage
-            ?.takeIf { it.first == chapterId }
-            ?.second
-            ?.coerceIn(0, pageCount - 1)
-        val start = if (marker != null) (marker - PAGE_WINDOW_LEAD).coerceAtLeast(0) else 0
-        val end = if (marker != null) {
-            (marker + PAGE_WINDOW_TRAIL).coerceAtMost(pageCount - 1)
-        } else {
-            (PAGE_WINDOW_LEAD + PAGE_WINDOW_TRAIL).coerceAtMost(pageCount - 1)
-        }
-        return start..end
+        return 0..(PAGE_WINDOW_INITIAL - 1).coerceAtMost(pageCount - 1)
     }
 
     /**
@@ -648,7 +499,7 @@ class MangaPreviewAdapter(
             else -> null
         }
         val chapterId = chapter?.id
-        anchorChapterId = chapterId
+        // The marker only highlights the page; it never moves the viewport.
         currentPage = if (chapterId != null && !chapter.read && chapter.last_page_read > 0) {
             chapterId to chapter.last_page_read
         } else {
@@ -746,10 +597,9 @@ class MangaPreviewAdapter(
     }
 
     companion object {
-        // Rows attached around the last-read page. Wide enough that a normal fling stays inside the
-        // window; it grows by PAGE_WINDOW_STEP whenever the user reaches an edge.
-        private const val PAGE_WINDOW_LEAD = 24
-        private const val PAGE_WINDOW_TRAIL = 36
+        // Rows attached when a chapter first shows its pages; the window grows by PAGE_WINDOW_STEP
+        // whenever the user reaches an edge.
+        private const val PAGE_WINDOW_INITIAL = 60
         private const val PAGE_WINDOW_EDGE = 6
         private const val PAGE_WINDOW_STEP = 24
     }

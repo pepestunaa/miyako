@@ -15,8 +15,4 @@ class MangaPreviewState {
     val chapterPages: HashMap<Long, List<Page>> = HashMap()
 
     var currentPage: Pair<Long, Int>? = null
-    var anchorChapterId: Long? = null
-    var pendingScrollToCurrent: Boolean = false
-    var landingPending: Boolean = false
-    var priorityChapterId: Long? = null
 }

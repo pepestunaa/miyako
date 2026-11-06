@@ -17,8 +17,8 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 - Step 3: preview state lives in `MangaPreviewState`.
 - Step 4: page loading lives in `MangaPreviewLoader`.
 - Step 5: preview panel UI and gesture handling live in `MangaPreviewController`.
-- Step 6: a chapter attaches only a window of page rows around the last-read page instead of the whole
-  chapter; the window grows on scroll, and every panel open re-anchors to the marker.
+- Step 6: a chapter attaches only a window of page rows, starting at its first page; the window grows on
+  scroll. The last-read page is only a highlight and never moves the viewport.
 - `MangaDetailsAdapter` now owns only the regular chapter list; `MangaPreviewAdapter` owns page-grid state and loading.
 - Build: `:app:compileStandardDebugKotlin -PdevAbi=x86_64 -x lint` passed.
 - Emulator audit: PENDING.
@@ -26,15 +26,15 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 
 ## Resuming here with no prior context
 
-1. **The landing bug (T1) is open and the direction is decided.** Start at "Next action" below.
-2. Do not open `MangaDetailsAdapter.kt` as a warm-up and do not add another adapter viewport rule —
-   seven rounds did that and every one of them failed T1.
+1. **The marker landing was removed in step 3c by user request.** Start at "Next action" below.
+2. Do not reopen `MangaDetailsAdapter.kt` as a warm-up and do not reintroduce a landing to the marker —
+   seven rounds tried that and every one of them failed T1.
 3. Do not test a data hypothesis on the phone: both candidates were disproved from the database
    (see "Settled from the database").
 4. Do not trust a `PASS` you cannot reproduce: it means someone ran the audit on the device.
    `PENDING` means code changed and compiled but nobody looked at the phone — not done, and the
    matching `todo.md` box stays unchecked.
-5. Structural questions (`who calls anchorToCurrentPage`, what still depends on a section holder) go
+5. Structural questions (who calls `insertPageItems`, what still depends on a section holder) go
    through the `codebase-memory` skill, or a subagent that returns paths plus symbol names.
 6. This file is a fixed cost for every session. Keep it near 100 lines: fold old rounds into the
    verdict table, do not append them.
@@ -55,48 +55,42 @@ tables behind the verdicts): `git show 3239c2fb84:docs/preview-checkpoint.md`.
 | 2h | gate rows at the mutation instead of the request, cover the re-entrant attach | `c18f85ed5b` | ok | FAIL (user, 2026-11-05) — D1 FAIL, D2 PASS |
 | 2i | keep the viewport through a dataset swap (`updateItems`) | `d2e536b52c` | ok | FAIL (user, 2026-11-05) — E1 FAIL, E2 PASS; the capture itself was wrong, reverted by 2j |
 | 2j | a grid rebuild always re-applies the target landing (rule F2, chosen by the user) | `5b0e9e0401` | ok | FAIL (user, 2026-11-05) — G1 FAIL, G2 not run. Topic stopped here |
-| 3 | target chapter enters first, cached rows cannot push the initial landing | this commit | ok | PENDING — emulator audit required |
-| 3b | attach a page window around the marker; re-anchor on every open | this commit | ok | PENDING — emulator audit required |
+| 3 | target chapter enters first, cached rows cannot push the initial landing | `e6a9f38958` | ok | PENDING — superseded by 3c |
+| 3b | attach a page window around the marker; re-anchor on every open | `e6a9f38958` | ok | PENDING — superseded by 3c |
+| 3c | remove marker landing entirely: no auto-scroll, window starts at page 0 | this commit | ok | PENDING — emulator audit required |
 | 4 | disable-then-measure the priority loader chain | — | — | sequenced after T1, see Decisions |
 | 5 | rebuild: full chapter list, pages inserted only on viewport entry | — | — | — |
 | 6 | cut the per-frame scans behind the heavy panel scroll | — | — | PENDING — never started, see "Step 6" |
 
 ## Next action
 
-Step 3 now builds the initial grid with the target chapter's cached pages only, and step 3b attaches a
-window around the marker instead of every page before it. Every panel open calls `scrollToCurrentPage()`.
-The window grows by 24 rows when the user reaches an edge; upward growth waits for drag/idle because the
-anchor correction cancels a fling.
+Step 3c removes the marker landing completely: the panel no longer scrolls to the last-read page when it
+opens or rebuilds, and a chapter attaches its first 60 page rows instead of a window around the marker. The
+window still grows by 24 rows when the user reaches an edge; upward growth waits for drag/idle because the
+anchor correction cancels a fling. The marker remains a visual highlight only.
 
-Next: install the debug APK and audit first open, reopen, upward/downward fling, reader navigation, and
-clean logcat. If landing passes, continue with step 4 as a separate measurement commit.
+Next: install the debug APK and audit that the panel opens at the top of the grid, that the marker does not
+jump to the first row, and that fling up/down still expands pages without jank or a crash.
 
 ## Decisions already made — do not reopen
 
 - Preview target stays **the last-read page**: `refreshCurrentPage()` reads
   `presenter.allHistory.maxByOrNull { it.last_read }` and `chapter.last_page_read`. The alternative
   ("last page tapped in the preview") was considered and rejected.
-- Reopen position memory is **intentionally gone**. The panel starts at the top and lands directly on the
-  target with no animation. That is the desired end state.
-- **The landing is fixed from the dataset, not from the viewport** (main session, 2026-11-05, with the
-  user's delegation). When the target chapter attaches, insert its pages **from the target index onward**,
-  then land once. The pages above the target are not in the dataset at open, so nothing can push the
-  target down; their absence while browsing upward belongs to step 5's compensating insert. Do not reopen
-  the viewport-fighting approaches.
-- **Rule F2 (user, 2026-11-05): in grid mode a rebuild always lands on the last-read page.** The panel's
-  position is defined by the data, not by the children a dataset swap scraps. Do not reintroduce a
-  preserve-the-viewport rebuild without asking. Chosen knowing the cost; G2, the test for that cost, was
-  never run.
-- **Step 3b (2026-11-06): the landing no longer depends on every page above the marker being attached.**
-  A chapter attaches `PAGE_WINDOW_LEAD` rows before and `PAGE_WINDOW_TRAIL` rows after the marker, then
-  grows on scroll. This is the direct fix for "still stacked with the earlier pages of that chapter":
-  the old path inserted the whole page list, so the marker position was buried behind rows the user never
-  asked to see yet. Do not widen the initial window back to the full chapter without an audit result.
-- The landing is **a loading rule, not a glide machine**: no anchor state, no `viewportMove`-style flags,
-  no timers, no `postDelayed` chains, no re-animation of the open.
-- **Step 4 (measure the priority chain) is out of the current work order** — not cancelled, sequenced
-  after T1, because measuring a panel that lands wrong measures noise. When resumed: those items exist
-  because page sections exploded during layout; disable and measure, do not delete on sight.
+- Reopen position memory is **intentionally gone**. The panel opens at the top of the grid and does not
+  scroll to the marker (step 3c).
+- **There is no landing any more (step 3c, user 2026-11-06).** The panel does not scroll to the last-read
+  page on open, rebuild, or page attach. `refreshCurrentPage()` only feeds the highlight; it never touches
+  the viewport. Do not reintroduce a target scroll through anchor state, flags, timers, or `postDelayed`
+  chains — those were the approaches that kept failing T1.
+- **Rule F2 (user, 2026-11-05) is superseded by step 3c.** The panel no longer lands on the last-read page.
+  The user's instruction: remove every function that makes the marker appear on the first row. The marker
+  stays a highlight; position is whatever the user left.
+- **Step 3b is superseded by 3c.** Windowed page rows stay, but the window starts at page 0 of each chapter
+  instead of around the marker. Do not reintroduce marker-centered windows or a landing without asking.
+- **Step 4 (measure the priority chain) is out of the current work order** — not cancelled, now sequenced
+  after the landing removal settles. When resumed: those items exist because page sections exploded during
+  layout; disable and measure, do not delete on sight.
 - Branch B (row geometry in `ChapterLayoutManager`) is **closed** — split from branch A by the 2026-11-05
   observation.
 - **A single PASS is not a PASS.** 2f was recorded PASS on one trial and FAIL on repeat tries. Ask for the
@@ -104,15 +98,16 @@ clean logcat. If landing passes, continue with step 4 as a separate measurement 
 
 ## Tracked bugs
 
-- **T1 — the preview does not open on the last-read page (OPEN, stopped by the user 2026-11-05).** Every
-  landing verdict failed: T1, B1, D1, E1, G1. The user's own words: "BIG FAIL every time", "still stacked
+- **T1 — the preview does not open on the last-read page (CLOSED AS WON'T-DO, 2026-11-06).** Every landing
+  verdict failed: T1, B1, D1, E1, G1. The user's own words: "BIG FAIL every time", "still stacked
   with the earlier pages of that chapter". Lazy attach and the regression items passed (T3, B2, B3, D2,
-  E2), so the panel's data is fine and its position is not. Step 3b targets the "stacked" shape directly
-  (page rows are windowed around the marker) and re-anchors on every open; **not verified yet**.
+  E2), so the panel's data is fine and its position is not. Step 3c removes the landing instead of tuning
+  it: the marker must not appear on the first row, and the panel opens at the top. Steps 3/3b are kept in
+  the table only as history.
 - **scrolling the panel feels heavy (open, never started).** Every drag frame runs
   `loadVisiblePageSections()` → `onPageSectionBound` → `getGlobalPositionOf(section)`, and FlexibleAdapter
   resolves that by scanning the item list — O(children x items) per frame with 854+ sections.
-  `currentPagePosition()` and `sectionPositionOf()` scan the whole list per call too. See "Step 6".
+  See "Step 6".
 - Closed: pages stayed detached until one drag (step 2); the 2026-11-04 form of **T2 — target drifted off
   screen after the open** (`onPagesLoaded` inserted chapters above the parked target without consulting the
   gate, and RecyclerView does not compensate an insert above the anchor).

@@ -558,11 +558,6 @@ class MangaPreviewController(
         binding.scrollToTop.hide()
         binding.fastScroller.isVisible = false
         binding.swipeRefresh.isEnabled = false
-        // Every open starts from the last-read page again instead of wherever the previous session
-        // was left. Posted so the panel is laid out at its open position first.
-        binding.pagesPreviewRecycler.post {
-            previewAdapter?.scrollToCurrentPage()
-        }
     }
 
 
