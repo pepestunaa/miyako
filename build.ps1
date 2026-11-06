@@ -2,6 +2,12 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+Write-Host "Memastikan emulator siap..."
+& (Join-Path $projectRoot "start.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "Emulator gagal disiapkan."
+}
+
 Push-Location $projectRoot
 try {
     Write-Host "Membuat APK debug..."
