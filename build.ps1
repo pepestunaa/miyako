@@ -13,4 +13,10 @@ try {
     Pop-Location
 }
 
-Write-Host "Build berhasil."
+Write-Host "Build berhasil. Meng-install APK..."
+& (Join-Path $projectRoot "install.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "Install APK gagal."
+}
+
+Write-Host "Build dan install berhasil."

@@ -8,7 +8,21 @@ $apk = Join-Path $projectRoot "app/build/outputs/apk/standard/debug/app-standard
 
 $devices = & $adb devices
 if (($devices | Select-String "^$device\s+device$") -eq $null) {
-    throw "Emulator belum berjalan. Jalankan .\start-emulator.ps1 terlebih dahulu."
+    throw "Emulator belum berjalan. Jalankan .\start.ps1 terlebih dahulu."
+}
+
+Write-Host "Memastikan emulator sudah selesai boot..."
+$deadline = (Get-Date).AddMinutes(3)
+do {
+    $bootCompleted = (& $adb -s $device shell getprop sys.boot_completed 2>$null).Trim()
+    if ($bootCompleted -eq "1") {
+        break
+    }
+    Start-Sleep -Seconds 3
+} while ((Get-Date) -lt $deadline)
+
+if ($bootCompleted -ne "1") {
+    throw "Emulator belum selesai boot dalam 3 menit."
 }
 
 if (-not (Test-Path $apk)) {
