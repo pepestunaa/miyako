@@ -8,7 +8,7 @@ $launcher = "$packageName/.MainActivityDefaultDummy"
 
 $devices = & $adb devices
 if (($devices | Select-String "^$device\s+device$") -eq $null) {
-    throw "Emulator belum berjalan. Jalankan .\start-emulator.ps1 terlebih dahulu."
+    throw "Emulator belum berjalan. Jalankan miyako start terlebih dahulu."
 }
 
 Write-Host "Membuka Miyako..."
