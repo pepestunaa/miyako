@@ -98,9 +98,17 @@ Gunakan script di root project untuk development tanpa Android Studio:
 .\build.ps1
 ```
 
-`build.ps1` otomatis menjalankan `start.ps1` terlebih dahulu. Jika emulator `miyako-dev` belum aktif,
-script akan menyalakannya dan menunggu sampai boot selesai. Setelah itu script melakukan build debug,
-install APK, lalu membuka aplikasi Miyako.
+`build.ps1` hanya melakukan build debug secara incremental dan menghasilkan APK. Script ini tidak
+menyalakan emulator, meng-install APK, atau membuka aplikasi.
+
+Workflow lengkap dijalankan secara terpisah:
+
+```powershell
+.\start.ps1
+.\build.ps1
+.\install.ps1
+.\launch.ps1
+```
 
 Script terpisah tetap tersedia bila hanya membutuhkan satu langkah:
 
@@ -112,10 +120,6 @@ Script terpisah tetap tersedia bila hanya membutuhkan satu langkah:
 ```
 
 `start.ps1` aman dijalankan ketika emulator sudah aktif karena hanya menunggu emulator siap.
-
-Zed juga menyediakan task project di `.zed/tasks.json`. Buka command palette, pilih `task: spawn`,
-lalu pilih task Miyako yang diinginkan. Task `Miyako: Build, Install, and Launch` menjalankan workflow
-utama yang sama seperti `build.ps1`; task lainnya menjalankan script terpisah.
 
 ## Audit E2E
 
